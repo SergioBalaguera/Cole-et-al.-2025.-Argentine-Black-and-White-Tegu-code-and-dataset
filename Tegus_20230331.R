@@ -4,7 +4,7 @@
 ##############   Created by: Jenna Cole                  ##############X
 ##############   Modified by Sergio A. Balaguera-Reina   ##############X
 ##############               Daniel Bonilla-Liberato     ##############X
-##############   Last day modified: Sep 3rd, 2024        ##############X
+##############   Last day modified: Sep 7th, 2024        ##############X
 #######################################################################X
 
 rm(list = ls())
@@ -25,7 +25,7 @@ library(MuMIn)
 library(ggpubr)
 library(glm.nb)
 
-#### 1. Calling and formating data----
+#### 1. Calling and formating invasive data----
 tegu.data <- read.csv("tegudata20211111.csv")
 
 #add column for month and year
@@ -77,7 +77,7 @@ boxcox(tegu.data$Intake.SVL)
 hist(tegu.data$fulton, breaks=100, main="Fulton's K excluding hatchlings and outliers")
 boxcox(tegu.data$fulton) #Not normal
 
-#### Add distance and environmental data####
+  #### 1.1. Add distance and environmental data####
 teguhabdat<-read.csv("20220224habdata.csv")
 unique(teguhabdat$Hab1)
 teguhabdat$Hab.Name1<- ifelse(teguhabdat$Hab1 == 4, "Prairie and Bog",
@@ -208,6 +208,7 @@ tegu.data$m10<-as.numeric(ifelse(tegu.data$month.numb==10,"1", "0" ))
 tegu.data$m11<-as.numeric(ifelse(tegu.data$month.numb==11,"1", "0" ))
 tegu.data$m12<-as.numeric(ifelse(tegu.data$month.numb==12,"1", "0" ))
 
+  #### 1.2. Final removals test whether abnormalities and outliers have an effect ####
 #remove hand captured tegu
 tegu.data<- tegu.data[!(tegu.data$UF.Animal.ID=="TuMe2348"),] 
 
@@ -225,7 +226,6 @@ mild.threshold.upper #
 
 #UF data remove outliers
 tegu.data<-tegu.data[which(tegu.data$fulton<3.95& tegu.data$fulton>2.16),]
-#write.csv(tegu.data, "tegudatanooutliers2022Aug25.csv", row.names=F)
 
 #remove column
 tegu.data <- subset (tegu.data, select = -c(Age.Class))
@@ -344,7 +344,6 @@ mild.threshold.upper.ab #3.95
 
 #tegu.data.ab remove outliers
 tegu.data.ab<-tegu.data.ab[which(tegu.data.ab$fulton<3.95 & tegu.data.ab$fulton>2.16),]
-#write.csv(tegu.data.ab, "tegudata.ab.nooutliers.20220825.csv", row.names=F)
 
 #create groups
 Group1.ab<-subset(tegu.data.ab, tegu.data.ab$sizeclass=="Group1")
@@ -364,81 +363,14 @@ Group1.ab$slope<-(c(3.04))
 Group2.ab$slope<-(c(3.08))
 Group3.ab$slope<-(c(2.96))
 
-#save file
-#write.csv(tegu.data, "tegudata20220825.csv", row.names=F)
-#write.csv(tegu.data.ab, "tegudata.ab20220825.csv", row.names=F)
-
 #### Histogram
 hist(tegu.data.ab$fulton, breaks=100, xlab="Fulton's Values", main="Tegu Fulton's Values")#histogram of SVL data
 mean(tegu.data.ab$fulton)
 abline(v=3.06, col="red",lwd=2)##Verticle line at svl = 30, cutoff for adult size class
 
-####condition index####
-unique(Group1.ab$Body.Condition)
+#### 2. Calling and formating native data----
 
-#Group 1 - hatchlings
-emaciated1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "emaciated")
-underweight1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "underweight/lean")
-ideal1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "ideal")
-
-mean(emaciated1$fulton) 
-sd(emaciated1$fulton)
-
-mean(underweight1$fulton) 
-sd(underweight1$fulton) 
-
-mean(ideal1$fulton) 
-sd(ideal1$fulton) 
-
-#group 2 - juveniles
-emaciated2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "emaciated")
-underweight2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "underweight/lean")
-ideal2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "ideal")
-
-mean(emaciated2$fulton) #2.422
-sd(emaciated2$fulton) #0.24
-
-mean(underweight2$fulton) #2.8
-sd(underweight2$fulton) #0.30
-
-mean(ideal2$fulton) #3.01
-sd(ideal2$fulton) #0.33
-
-#group 3 - subadults
-emaciated3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "emaciated")
-underweight3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "underweight/lean")
-ideal3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "ideal")
-
-mean(emaciated3$fulton) #2.82
-sd(emaciated3$fulton) #0.25
-
-mean(underweight3$fulton) #2.98
-sd(underweight3$fulton) #0.24
-
-mean(ideal3$fulton) #3.09
-sd(ideal3$fulton)#0.29
-
-#### 3. Histograms of UF Data####
-
-# make histogram of mass, svl and FK
-summary (tegu.data.ab)
-
-mean(tegu.data.ab$Intake.SVL)
-sd(tegu.data.ab$Intake.SVL)
-
-mean(tegu.data.ab$Intake.TL)
-sd(tegu.data.ab$Intake.TL)
-
-mean(tegu.data.ab$mass.g)
-sd(tegu.data.ab$mass.g)
-
-mean(tegu.data.ab$fat.g, na.rm=T)
-sd(tegu.data.ab$fat.g, na.rm=T)
-
-mean(tegu.data.ab$percfat, na.rm=T)
-sd(tegu.data.ab$percfat, na.rm=T)
-
-#split males/females
+#### 4. Body condition analysis by groups #####
 tegu.ab.male<- subset(tegu.data.ab, tegu.data.ab$Analysis.Sex == "Male")
 tegu.ab.female<-subset(tegu.data.ab, tegu.data.ab$Analysis.Sex == "Female")
 
@@ -472,7 +404,7 @@ sd(tegu.ab.male$percfat, na.rm=T)
 mean(tegu.ab.female$percfat, na.rm=T)
 sd(tegu.ab.female$percfat, na.rm=T)
 wilcox.test(tegu.data.ab$percfat~ tegu.data.ab$Analysis.Sex)
-##
+
 par(mar=c(2,2,2,2))
 hist(tegu.data.ab$mass.g, breaks = 100, main= "Tegu mass (g)")
 shapiro.test(tegu.data.ab$mass.g) #not normal
@@ -482,10 +414,8 @@ hist(tegu.data.ab$fulton, breaks=100, main="Fulton's K")
 shapiro.test(tegu.data.ab$fulton) #not normal
 hist(tegu.data.ab$percfat, breaks=100)
 hist(tegu.data.ab$fat.g, breaks=100)
-####
-#### 4. T.Tests ####
-#### 4a. Shapiro Test####
 
+#### Testing for normality on covariates and difference among covariates by fulton ####
 #all...nothing is normal
 shapiro.test(tegu.data.ab$fulton)#not normal
 shapiro.test(tegu.data.ab$Intake.SVL) #not normal
@@ -566,91 +496,7 @@ shapiro.test(Group3.ab$Rain.Max.15.cm)
 shapiro.test(Group3.ab$Min.Temp.C)
 shapiro.test(Group3.ab$julian)
 
-
-#### 4.a.1 Box-plot ####
-
-#all...nothing is normal
-shapiro.test(tegu.data.ab$fulton)#not normal
-shapiro.test(tegu.data.ab$Intake.SVL) #not normal
-shapiro.test(tegu.data.ab$mass.g)
-shapiro.test(tegu.data.ab$percfat)
-shapiro.test(tegu.data.ab$fat.g)
-shapiro.test(tegu.data.ab$C110111.DIST)
-shapiro.test(tegu.data.ab$C110424.DIST)
-shapiro.test(tegu.data.ab$JDC.DIST)
-shapiro.test(tegu.data.ab$Pond.DIST)
-shapiro.test(tegu.data.ab$UP.DIST)
-shapiro.test(tegu.data.ab$WCS.DIST)
-shapiro.test(tegu.data.ab$Habitat)
-shapiro.test(tegu.data.ab$Avg.Temp.C)
-shapiro.test(tegu.data.ab$Max.Temp.C)
-shapiro.test(tegu.data.ab$Rain.cm)
-shapiro.test(tegu.data.ab$Rain.Max.15.cm)
-shapiro.test(tegu.data.ab$Min.Temp.C)
-shapiro.test(tegu.data.ab$julian)
-
-#Group 1
-shapiro.test(Group1.ab$fulton)#not normal
-shapiro.test(Group1.ab$Intake.SVL) 
-shapiro.test(Group1.ab$mass.g)
-shapiro.test(Group1.ab$percfat)
-shapiro.test(Group1.ab$fat.g)
-shapiro.test(Group1.ab$C110111.DIST)
-shapiro.test(Group1.ab$C110424.DIST)
-shapiro.test(Group1.ab$JDC.DIST)
-shapiro.test(Group1.ab$Pond.DIST)
-shapiro.test(Group1.ab$UP.DIST)
-shapiro.test(Group1.ab$WCS.DIST)
-shapiro.test(Group1.ab$Habitat)
-shapiro.test(Group1.ab$Avg.Temp.C)
-shapiro.test(Group1.ab$Max.Temp.C)
-shapiro.test(Group1.ab$Rain.cm)
-shapiro.test(Group1.ab$Rain.Max.15.cm)
-shapiro.test(Group1.ab$Min.Temp.C)
-shapiro.test(Group1.ab$julian)
-
-#Group 2
-shapiro.test(Group2.ab$fulton)#not normal
-shapiro.test(Group2.ab$Intake.SVL) 
-shapiro.test(Group2.ab$mass.g)
-shapiro.test(Group2.ab$percfat)
-shapiro.test(Group2.ab$fat.g)
-shapiro.test(Group2.ab$C110111.DIST)
-shapiro.test(Group2.ab$C110424.DIST)
-shapiro.test(Group2.ab$JDC.DIST)
-shapiro.test(Group2.ab$Pond.DIST)
-shapiro.test(Group2.ab$UP.DIST)
-shapiro.test(Group2.ab$WCS.DIST)
-shapiro.test(Group2.ab$Habitat)
-shapiro.test(Group2.ab$Avg.Temp.C)
-shapiro.test(Group2.ab$Max.Temp.C)
-shapiro.test(Group2.ab$Rain.cm)
-shapiro.test(Group2.ab$Rain.Max.15.cm)
-shapiro.test(Group2.ab$Min.Temp.C)
-shapiro.test(Group2.ab$julian)
-
-#Group 3
-shapiro.test(Group3.ab$fulton)#normal
-shapiro.test(Group3.ab$Intake.SVL) 
-shapiro.test(Group3.ab$mass.g)
-shapiro.test(Group3.ab$percfat)
-shapiro.test(Group3.ab$fat.g)
-shapiro.test(Group3.ab$C110111.DIST)
-shapiro.test(Group3.ab$C110424.DIST)
-shapiro.test(Group3.ab$JDC.DIST)
-shapiro.test(Group3.ab$Pond.DIST)
-shapiro.test(Group3.ab$UP.DIST)
-shapiro.test(Group3.ab$WCS.DIST)
-shapiro.test(Group3.ab$Habitat)
-shapiro.test(Group3.ab$Avg.Temp.C)
-shapiro.test(Group3.ab$Max.Temp.C)
-shapiro.test(Group3.ab$Rain.cm)
-shapiro.test(Group3.ab$Rain.Max.15.cm)
-shapiro.test(Group3.ab$Min.Temp.C)
-shapiro.test(Group3.ab$julian)
-
-
-#### 4b. Fligner-Killeen test####
+##Fligner-Killeen test
 #all groups fulton variance by group, fulton is not normal
 fligner.test(tegu.data.ab$fulton, tegu.data.ab$sizeclass)#no
 fligner.test(tegu.data.ab$fulton, tegu.data.ab$Intake.SVL) #equvar
@@ -735,10 +581,8 @@ fligner.test(Group3.ab$fulton, Group3.ab$julian)
 fligner.test(Group3.ab$fulton, Group3.ab$year)
 fligner.test(Group3.ab$fulton, Group3.ab$month.numb)
 
-
-#### 4c. Wilcoxn rank sum test ####
-
-#all tegu differences between Sex
+## Wilcoxon rank sum test tegu differences between Sex
+#all 
 wilcox.test(tegu.data.ab$fulton~tegu.data.ab$Analysis.Sex)
 wilcox.test(tegu.data.ab$Intake.SVL~tegu.data.ab$Analysis.Sex )
 wilcox.test(tegu.data.ab$mass.g~tegu.data.ab$Analysis.Sex)
@@ -758,7 +602,7 @@ wilcox.test(tegu.data.ab$Min.Temp.C~tegu.data.ab$Analysis.Sex)#sig diff
 wilcox.test(tegu.data.ab$Rain.Max.15.cm~tegu.data.ab$Analysis.Sex)
 wilcox.test(tegu.data.ab$julian~tegu.data.ab$Analysis.Sex) #sig diff
 
-#Group 1 differences between sex
+#Group 1 
 wilcox.test(Group1.ab$fulton~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$Intake.SVL~Group1.ab$Analysis.Sex )
 wilcox.test(Group1.ab$mass.g~Group1.ab$Analysis.Sex)
@@ -780,8 +624,7 @@ wilcox.test(Group1.ab$julian~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$year~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$month.numb~Group1.ab$Analysis.Sex)
 
-
-#group 2 differences between sex
+#group 2 
 wilcox.test(Group2.ab$fulton~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$Intake.SVL~Group2.ab$Analysis.Sex ) 
 wilcox.test(Group2.ab$mass.g~Group2.ab$Analysis.Sex)
@@ -803,31 +646,29 @@ wilcox.test(Group2.ab$julian~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$year~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$month.numb~Group2.ab$Analysis.Sex)
 
-#group 3 differences between sex
+#group 3 
 wilcox.test(Group3.ab$fulton~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$Intake.SVL~Group3.ab$Analysis.Sex )
-#wilcox.test(Group3.ab$mass.g~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$percfat~Group3.ab$Analysis.Sex) #sig diff
-#wilcox.test(Group3.ab$fat.g~Group3.ab$Analysis.Sex) #sig diff
-#wilcox.test(Group3.ab$C110111.DIST~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$Intake.SVL~Group3.ab$Analysis.Sex )
+wilcox.test(Group3.ab$mass.g~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$percfat~Group3.ab$Analysis.Sex) #sig diff
+wilcox.test(Group3.ab$fat.g~Group3.ab$Analysis.Sex) #sig diff
+wilcox.test(Group3.ab$C110111.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$C110424.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$JDC.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Pond.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$UP.DIST~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$WCS.DIST~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$Habitat~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$WCS.DIST~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$Habitat~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Avg.Temp.C~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Max.Temp.C~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Rain.cm~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Min.Temp.C~Group3.ab$Analysis.Sex) #sig diff
 wilcox.test(Group3.ab$Rain.Max.15.cm~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$julian~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$julian~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$year~Group3.ab$Analysis.Sex)
-#wilcox.test(Group3.ab$month.numb~Group3.ab$Analysis.Sex)
+wilcox.test(Group3.ab$month.numb~Group3.ab$Analysis.Sex)
 
-
-#### Kruskal wallis test ####
-
+## Kruskal wallis test
 #do krushkal walis test on fulton's k vs. sizeclass; all levels
 kruskal.test(tegu.data.ab$fulton, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$fulton, tegu.data.ab$sizeclass, method = 'bonferroni')
@@ -836,7 +677,6 @@ dunnTest(tegu.data.ab$fulton, tegu.data.ab$sizeclass, method = 'bonferroni')
 kruskal.test(tegu.data.ab$Intake.SVL, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$Intake.SVL, tegu.data.ab$sizeclass, method = 'bonferroni')
 
-
 #do krushkal walis test on TL vs. sizeclass/group; all levels
 kruskal.test(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass, method = 'bonferroni')
@@ -844,7 +684,6 @@ dunnTest(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass, method = 'bonferroni')
 #do krushkal walis test on mass vs. sizeclass; all levels
 kruskal.test(tegu.data.ab$mass.g, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$mass.g, tegu.data.ab$sizeclass, method = 'bonferroni')
-
 
 #do krushkal walis test on percent fat vs. sizeclass
 kruskal.test(tegu.data.ab$percfat, tegu.data.ab$sizeclass)
@@ -912,6 +751,227 @@ dunnTest(tegu.data$Rain.Max.15.cm, tegu.data$sizeclass, method = 'bonferroni')
 kruskal.test(tegu.data$julian, tegu.data$sizeclass)
 dunnTest(tegu.data$julian, tegu.data$sizeclass, method = 'bonferroni')
 
+#### Native range data ####
+Native <- read.csv("NativeTeguDat.csv")
+merianae<-subset(Native, Native$Species %in% "merianae")
+
+merianae$mass.g <- with(merianae, BM*1000)##body mass in grams
+merianae$fulton <- with(merianae, (mass.g/SVL^3)*10^2)
+merianae$percfat<-with(merianae, (FatBody/mass.g)*100)
+merianae$lsvl<-log(merianae$SVL)
+merianae$lmass<-log(merianae$mass.g)
+
+merianae$Date.1 <- as.Date(merianae$Date, "%m/%d/%Y")
+
+#add column for month and year
+merianae<-merianae %>%
+  dplyr::mutate(year = lubridate::year(merianae$Date.1), 
+                month.numb = lubridate::month(merianae$Date.1), 
+                day = lubridate::yday(merianae$Date.1))
+
+#convert month.num to name
+merianae$month<-month.abb[merianae$month.numb]
+merianae$month<-factor(merianae$month, levels=month.abb)
+
+#split into groups
+merianae$sizeclass <- factor(ifelse(merianae$SVL <=20.2, "Group1", 
+                                    ifelse(merianae$SVL>=30.0, "Group3","Group2")))
+
+#create group
+Group1.N<-subset(merianae, merianae$sizeclass=="Group1")
+Group2.N<-subset(merianae, merianae$sizeclass== "Group2")
+Group3.N<-subset(merianae, merianae$sizeclass== "Group3")
+
+#male and female
+males.N3<-subset (Group3.N, Group3.N$Sex=="male")
+females.N3<-subset (Group3.N, Group3.N$Sex=="female")
+
+#with outliers
+#mean fulton and SD per group
+mean(merianae$fulton, na.rm=T) #3.189
+sd(merianae$fulton, na.rm = T)#0.583
+
+#group 1, n = 3
+mean(Group1.N$fulton, na.rm=T) #4.908
+sd(Group1.N$fulton, na.rm=T) #3.829
+
+#group 2, n = 22
+mean(Group2.N$fulton, na.rm=T) #3.382
+sd(Group2.N$fulton, na.rm=T) #1.654
+
+#group 3, n = 670
+mean(Group3.N$fulton, na.rm=T) #3.175
+sd(Group3.N$fulton, na.rm=T) #0.462
+
+#remove outliers
+#IQR for outliers in fulton
+iqr<-IQR(merianae$fulton, na.rm=T)
+
+lowerq=quantile(merianae$fulton, na.rm=T)[2]
+upperq=quantile(merianae$fulton, na.rm=T)[4]
+
+mild.threshold.upper = (iqr * 1.5) + upperq
+mild.threshold.lower = lowerq - (iqr * 1.5)
+mild.threshold.lower #1.931
+mild.threshold.upper #4.4347
+
+#remove outliers
+merianae2<-merianae[which(merianae$fulton<4.434758 & merianae$fulton>1.931379),]
+
+#check effect of sex
+a <- subset(merianae2, Sex %in% "female")
+b <- subset(merianae2, Sex %in% "male")
+
+wilcox.test(a$SVL, b$SVL)
+wilcox.test(a$mass.g, b$mass.g)
+
+wilcox.test(a$percfat, b$percfat)
+mean(a$percfat, na.rm = T); sd(a$percfat, na.rm = T)
+mean(b$percfat, na.rm = T); sd(b$percfat, na.rm = T)
+
+wilcox.test(a$FatBody, b$FatBody)
+mean(a$FatBody, na.rm = T); sd(a$FatBody, na.rm = T)
+mean(b$FatBody, na.rm = T); sd(b$FatBody, na.rm = T)
+
+#create groups 2
+Group1.N2<-subset(merianae2, merianae2$sizeclass=="Group1")
+Group2.N2<-subset(merianae2, merianae2$sizeclass== "Group2")
+Group3.N2<-subset(merianae2, merianae2$sizeclass== "Group3")
+
+#check male and female
+Group1.male<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Male")
+Group2.male<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Male")
+Group3.male<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Male")
+
+Group1.female<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Female")
+Group2.female<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Female")
+Group3.female<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Female")
+
+#check groups
+#all, n =673
+mean(merianae2$SVL,na.rm=T) #38.21
+mean(merianae2$fulton, na.rm=T) #3.168
+mean(tegu.data.ab$fulton, na.rm=T) #3.06
+sd(merianae2$fulton, na.rm = T)#0.418
+
+#group 1, n = 2
+mean(Group1.N2$SVL,na.rm=T) #19.5
+sd(Group1.N2$SVL, na.rm=T) #0.103
+mean(Group1.N2$fulton, na.rm=T) #2.697
+sd(Group1.N2$fulton, na.rm=T) #0.103
+mean(Group1.N2$mass.g, na.rm=T) #2.697
+sd(Group1.N2$mass.g, na.rm=T) #0.103
+mean(Group1.N2$FatBody, na.rm=T) #2.697
+sd(Group1.N2$FatBody, na.rm=T) #0.103
+summary(Group2.N2$percfat)
+sd(Group2.N2$percfat, na.rm=T)
+
+#group 2, n = 18
+mean(Group2.N2$SVL,na.rm=T) #28.027
+sd(Group2.N2$SVL, na.rm=T)
+mean(Group2.N2$fulton, na.rm=T) #2.94
+sd(Group2.N2$fulton, na.rm=T) #0.392
+mean(Group2.N2$mass.g, na.rm=T) #2.697
+sd(Group2.N2$mass.g, na.rm=T) #0.103
+mean(Group2.N2$FatBody, na.rm=T) #2.697
+sd(Group2.N2$FatBody, na.rm=T) #0.103
+
+#group 3, n = 653
+mean(Group3.N2$SVL,na.rm=T) #38.548
+sd(Group3.N2$SVL, na.rm=T)
+mean(Group3.N2$fulton, na.rm=T) #3.17
+sd(Group3.N2$fulton, na.rm=T) #0.417
+mean(Group3.N2$mass.g, na.rm=T) #2.697
+sd(Group3.N2$mass.g, na.rm=T) #0.103
+mean(Group3.N2$FatBody, na.rm=T) #2.697
+sd(Group3.N2$FatBody, na.rm=T) #0.103
+
+summary(Group3.N2$FatBody)
+summary(Group3.N2$fulton)
+
+summary(Group2.N2$FatBody)
+summary(Group2.N2$fulton)
+
+#Invasive
+#average Fulton's K, n = 1634
+mean(tegu.data.ab$Intake.SVL) #23.662
+mean(tegu.data.ab$fulton) #3.06
+sd(tegu.data.ab$fulton) #0.33
+
+#group 1, n = 403
+mean(Group1.ab$Intake.SVL) #16.97
+mean(Group1.ab$fulton, na.rm=T) #2.943
+sd(Group1.ab$fulton, na.rm=T) #0.346
+
+#group 2, n = 1081
+mean(Group2.ab$Intake.SVL)#24.798
+mean(Group2.ab$fulton, na.rm=T) #3.087
+sd(Group2.ab$fulton, na.rm=T) # 0.3162
+
+#group 3, n = 150
+mean(Group3.ab$Intake.SVL) #33.43
+mean(Group3.ab$fulton, na.rm=T) #3.215
+sd(Group3.ab$fulton, na.rm=T) #0.285
+
+#only large adults and early adults
+tegu.data.adults<-subset(tegu.data.ab, tegu.data.ab$Intake.SVL> 26.7)
+merianae.adults<-subset(merianae2, merianae2$SVL>26.7)
+
+wilcox.test(tegu.data.adults$Intake.SVL, merianae.adults$SVL)
+
+mean(tegu.data.adults$percfat, na.rm=T)
+sd(tegu.data.adults$percfat, na.rm=T)
+merianae.adults$percfat<- (merianae.adults$FatBody/merianae.adults$mass.g)*100
+mean(merianae.adults$percfat, na.rm=T)
+sd(merianae.adults$percfat, na.rm=T)
+
+mean(tegu.data.adults$mass.g)
+sd(tegu.data.adults$mass.g)
+
+mean(merianae.adults$mass.g)
+sd(merianae.adults$mass.g)
+
+#check slope
+merianae$lsvl<-log(merianae$SVL)
+merianae$ltl<-log(merianae$TL)
+merianae$lmass<-log(merianae$mass.g)
+
+summary(lm(lmass~lsvl, data=tegu.data.adults))
+#check slope
+summary(lm(lmass~lsvl, data=merianae.adults)) #yes
+summary(lm(lmass~lsvl, data=Group2.N2)) #no
+summary(lm(lmass~lsvl, data=Group3.N2)) #no
+summary(lm(lmass~lsvl, data=Group1.N2)) #no
+summary(lm(lmass~lsvl, data=Group5)) #no
+
+##Invasive 1
+summary(Group1.ab$Intake.SVL)
+summary(Group1.ab$mass.g)
+summary(Group1.ab$fulton)
+summary(Group1.ab$percfat)
+summary(Group1.ab$fat.g)
+
+##Invasive 2
+summary(Group2.ab$Intake.SVL)
+summary(Group2.ab$mass.g)
+summary(Group2.ab$fulton)
+summary(Group2.ab$percfat)
+summary(Group2.ab$fat.g)
+summary(Group2.ab$Analysis.Sex)
+
+##Invasive 3
+summary(Group3.ab$Intake.SVL)
+summary(Group3.ab$mass.g)
+summary(Group3.ab$fulton)
+summary(Group3.ab$percfat)
+summary(Group3.ab$fat.g)
+
+#slope
+summary(lm(lmass~lsvl, data=Group2.ab)) #no
+summary(lm(lmass~lsvl, data=Group3.ab)) #no
+summary(lm(lmass~lsvl, data=Group1.ab))
+
+
 ####
 #### 5. Averages ####
 # males and females
@@ -926,7 +986,6 @@ summary(tegu.data.ab$mass.g)
 summary(tegu.data.ab$fulton)
 summary(tegu.data.ab$percfat)
 summary(tegu.data.ab$fat.g)
-
 
 mean(Group3.ab$fulton) #3.16
 summary(adults$fulton) #2.26-3.93
@@ -1056,215 +1115,6 @@ mean(Group3.ab$Intake.SVL, na.rm=T) #3.084418
 ####
 
 
-#### Native vs. invasive range ####
-Native<-read.csv("C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/NativeTeguData.csv")
-merianae<-subset(Native, Native$Species %in% "merianae")
-
-merianae$mass.g <- with(merianae, BM*1000)##body mass in grams
-merianae$fulton <- with(merianae, (mass.g/SVL^3)*10^2)
-merianae$percfat<-with(merianae, (FatBody/mass.g)*100)
-merianae$lsvl<-log(merianae$SVL)
-merianae$ltl<-log(merianae$TL)
-merianae$lmass<-log(merianae$mass.g)
-
-merianae$Date.1 <- as.Date(merianae$Date, "%m/%d/%Y")
-
-#add column for month and year
-merianae<-merianae %>%
-  dplyr::mutate(year = lubridate::year(merianae$Date.1), 
-                month.numb = lubridate::month(merianae$Date.1), 
-                day = lubridate::yday(merianae$Date.1))
-
-#convert month.num to name
-merianae$month<-month.abb[merianae$month.numb]
-merianae$month<-factor(merianae$month, levels=month.abb)
-
-#split into groups
-merianae$sizeclass <- factor(ifelse(merianae$SVL <=20.2, "Group1", 
-                                    ifelse(merianae$SVL>=30.0, "Group3","Group2")))
-
-#create group
-Group1.N<-subset(merianae, merianae$sizeclass=="Group1")
-Group2.N<-subset(merianae, merianae$sizeclass== "Group2")
-Group3.N<-subset(merianae, merianae$sizeclass== "Group3")
-
-#male and female
-males.N3<-subset (Group3.N2, Group3.N2$Sex=="male")
-females.N3<-subset (Group3.N2, Group3.N2$Sex=="female")
-
-#with outliers
-#mean fulton and SD per group
-mean(merianae$fulton, na.rm=T) #3.189
-sd(merianae$fulton, na.rm = T)#0.583
-
-#group 1, n = 3
-mean(Group1.N$fulton, na.rm=T) #4.908
-sd(Group1.N$fulton, na.rm=T) #3.829
-
-#group 2, n = 22
-mean(Group2.N$fulton, na.rm=T) #3.382
-sd(Group2.N$fulton, na.rm=T) #1.654
-
-#group 3, n = 670
-mean(Group3.N$fulton, na.rm=T) #3.175
-sd(Group3.N$fulton, na.rm=T) #0.462
-
-#remove outliers
-#IQR for outliers in fulton
-iqr<-IQR(merianae$fulton, na.rm=T)
-
-lowerq=quantile(merianae$fulton, na.rm=T)[2]
-upperq=quantile(merianae$fulton, na.rm=T)[4]
-
-mild.threshold.upper = (iqr * 1.5) + upperq
-mild.threshold.lower = lowerq - (iqr * 1.5)
-mild.threshold.lower #1.931
-mild.threshold.upper #4.4347
-
-#remove outliers
-merianae2<-merianae[which(merianae$fulton<4.434758 & merianae$fulton>1.931379),]
-
-#create groups 2
-Group1.N2<-subset(merianae2, merianae2$sizeclass=="Group1")
-Group2.N2<-subset(merianae2, merianae2$sizeclass== "Group2")
-Group3.N2<-subset(merianae2, merianae2$sizeclass== "Group3")
-
-#check amle and female
-Group1.male<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Male")
-Group2.male<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Male")
-Group3.male<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Male")
-
-Group1.female<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Female")
-Group2.female<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Female")
-Group3.female<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Female")
-
-#check groups
-#all, n =673
-mean(merianae2$SVL,na.rm=T) #38.21
-mean(merianae2$fulton, na.rm=T) #3.168
-mean(tegu.data.ab$fulton, na.rm=T) #3.06
-sd(merianae2$fulton, na.rm = T)#0.418
-
-#group 1, n = 2
-mean(Group1.N2$SVL,na.rm=T) #19.5
-sd(Group1.N2$SVL, na.rm=T) #0.103
-mean(Group1.N2$fulton, na.rm=T) #2.697
-sd(Group1.N2$fulton, na.rm=T) #0.103
-mean(Group1.N2$mass.g, na.rm=T) #2.697
-sd(Group1.N2$mass.g, na.rm=T) #0.103
-mean(Group1.N2$FatBody, na.rm=T) #2.697
-sd(Group1.N2$FatBody, na.rm=T) #0.103
-summary(Group2.N2$percfat)
-sd(Group2.N2$percfat, na.rm=T)
-
-#group 2, n = 18
-mean(Group2.N2$SVL,na.rm=T) #28.027
-sd(Group2.N2$SVL, na.rm=T)
-mean(Group2.N2$fulton, na.rm=T) #2.94
-sd(Group2.N2$fulton, na.rm=T) #0.392
-mean(Group2.N2$mass.g, na.rm=T) #2.697
-sd(Group2.N2$mass.g, na.rm=T) #0.103
-mean(Group2.N2$FatBody, na.rm=T) #2.697
-sd(Group2.N2$FatBody, na.rm=T) #0.103
-
-#group 3, n = 653
-mean(Group3.N2$SVL,na.rm=T) #38.548
-sd(Group3.N2$SVL, na.rm=T)
-mean(Group3.N2$fulton, na.rm=T) #3.17
-sd(Group3.N2$fulton, na.rm=T) #0.417
-mean(Group3.N2$mass.g, na.rm=T) #2.697
-sd(Group3.N2$mass.g, na.rm=T) #0.103
-mean(Group3.N2$FatBody, na.rm=T) #2.697
-sd(Group3.N2$FatBody, na.rm=T) #0.103
-
-summary(Group3.N2$FatBody)
-summary(Group3.N2$fulton)
-
-summary(Group2.N2$FatBody)
-summary(Group2.N2$fulton)
-
-#Invasive
-
-#average Fulton's K, n = 1634
-mean(tegu.data.ab$Intake.SVL) #23.662
-mean(tegu.data.ab$fulton) #3.06
-sd(tegu.data.ab$fulton) #0.33
-
-#group 1, n = 403
-mean(Group1.ab$Intake.SVL) #16.97
-mean(Group1.ab$fulton, na.rm=T) #2.943
-sd(Group1.ab$fulton, na.rm=T) #0.346
-
-#group 2, n = 1081
-mean(Group2.ab$Intake.SVL)#24.798
-mean(Group2.ab$fulton, na.rm=T) #3.087
-sd(Group2.ab$fulton, na.rm=T) # 0.3162
-
-#group 3, n = 150
-mean(Group3.ab$Intake.SVL) #33.43
-mean(Group3.ab$fulton, na.rm=T) #3.215
-sd(Group3.ab$fulton, na.rm=T) #0.285
-
-#only large adults and early adults
-tegu.data.adults<-subset(tegu.data.ab, tegu.data.ab$Intake.SVL> 26.7)
-merianae.adults<-subset(merianae2, merianae2$SVL>26.7)
-
-wilcox.test(tegu.data.adults$Intake.SVL, merianae.adults$SVL)
-
-mean(tegu.data.adults$percfat, na.rm=T)
-sd(tegu.data.adults$percfat, na.rm=T)
-merianae.adults$percfat<- (merianae.adults$FatBody/merianae.adults$mass.g)*100
-mean(merianae.adults$percfat, na.rm=T)
-sd(merianae.adults$percfat, na.rm=T)
-
-mean(tegu.data.adults$mass.g)
-sd(tegu.data.adults$mass.g)
-
-mean(merianae.adults$mass.g)
-sd(merianae.adults$mass.g)
-
-#check slope
-merianae$lsvl<-log(merianae$SVL)
-merianae$ltl<-log(merianae$TL)
-merianae$lmass<-log(merianae$mass.g)
-
-summary(lm(lmass~lsvl, data=tegu.data.adults))
-#check slope
-summary(lm(lmass~lsvl, data=merianae.adults)) #yes
-summary(lm(lmass~lsvl, data=Group2.N2)) #no
-summary(lm(lmass~lsvl, data=Group3.N2)) #no
-summary(lm(lmass~lsvl, data=Group1.N2)) #no
-summary(lm(lmass~lsvl, data=Group5)) #no
-
-##Invasive 1
-summary(Group1.ab$Intake.SVL)
-summary(Group1.ab$mass.g)
-summary(Group1.ab$fulton)
-summary(Group1.ab$percfat)
-summary(Group1.ab$fat.g)
-
-##Invasive 2
-summary(Group2.ab$Intake.SVL)
-summary(Group2.ab$mass.g)
-summary(Group2.ab$fulton)
-summary(Group2.ab$percfat)
-summary(Group2.ab$fat.g)
-summary(Group2.ab$Analysis.Sex)
-
-##Invasive 3
-summary(Group3.ab$Intake.SVL)
-summary(Group3.ab$mass.g)
-summary(Group3.ab$fulton)
-summary(Group3.ab$percfat)
-summary(Group3.ab$fat.g)
-
-#slope
-summary(lm(lmass~lsvl, data=Group2.ab)) #no
-summary(lm(lmass~lsvl, data=Group3.ab)) #no
-summary(lm(lmass~lsvl, data=Group1.ab))
-
-
-####
 #### 6.Plotting Group 1####
 #### fulton by month####
 se <- function(x)
