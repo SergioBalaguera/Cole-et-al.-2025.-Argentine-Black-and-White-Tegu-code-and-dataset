@@ -1,395 +1,600 @@
-#######################################################################X
-##############   Argentine Black and White Tegu          ##############X
-##############   Body condition analysis                 ##############X
-##############   Created by: Jenna Cole                  ##############X
-##############   Modified by Sergio A. Balaguera-Reina   ##############X
-##############               Daniel Bonilla-Liberato     ##############X
-##############   Last day modified: Sep 9th, 2024        ##############X
-#######################################################################X
+############################################################
+############## Argentine Black and White Tegu ##############
+##############    Body condition analysis     ##############
+##############   Modified using K. McCaffrey   #############
+################## Tegu Manuscript #########################
+###########################################################
 
 rm(list = ls())
 dev.off()
-
-#Libraries----
-library(tidyverse)
-library(MASS)
-library(weathermetrics)
-
-library(FSA)
+#Install
+install.packages('odbc')
+install.packages('RODBC') #Step 1
+install.packages('dplyr') #Step 2
+install.packages('FSA') #Step 3
+install.packages('openintro') 
+install.packages('ggplot2')
+install.packages('e1071')
+install.packages('readxl')
+install.packages('tidyr')
+install.packages('weathermetrics')
+install.packages('olsrr')
+install.packages('MASS')
+install.packages('performance')
+install.packages('MuMIn')
+install.packages('lubridate')
+install.packages('ggpubr')
+install.packages('glm.nb')
+#Libraries
+library(odbc)
+library(RODBC) #Step 1
+library(dplyr) #Step 2
+library(FSA) #Step 3
 library(openintro) 
+library(ggplot2)
 library(e1071)
 library(readxl)
+library(tidyr)
+library(weathermetrics)
 library(olsrr)
+library(MASS)
 library(performance)
 library(MuMIn)
+library(lubridate)
 library(ggpubr)
 library(glm.nb)
 
-#### 1. Calling and exploring invasive data----
-tegu.data <- read.csv("tegudata.ab.nooutliers.20220825.csv")
+#### 1. Calling database from access ####
+con <- odbcConnect("ExoticsDB") ##Go to control panel > Administrative Tools > ODBC Data Sources (64-bit) to link data base
+sqlTables(con, tableType = "TABLE")$TABLE_NAME ##List all tables inside database
+tbl_Intake <- sqlFetch(con, "tbl_Intake") ##Call intake
+names(tbl_Intake) <- make.names(names(tbl_Intake), unique = T)
+tbl_Necropsy <- sqlFetch(con, "tbl_Necropsy") ##Call necropsy
+names(tbl_Necropsy) <- make.names(names(tbl_Necropsy), unique = T)
+
+intake <- subset(tbl_Intake, Species %in% "82")
+necropsy <- subset(tbl_Necropsy, Species.Code %in% "82")
+
+#### 2. Cleaning UF Data ####
+##Merging intake and necropsy data. clean up data columns first
+intake <- intake[-c(2,3,5:7,9:13,17, 19, 22, 24,27,31, 34,36:40)]
+names(intake)
+intake<-rename(intake, Intake.SVL=SVL..cm.,Intake.TL=Total.L..cm.,Intake.Sex=Sex,Intake.Weight.kg=Weight..kg.)
+str(intake)
+intake<- intake[!(intake$UF.Animal.ID=="TuMe3249" | 
+                    intake$UF.Animal.ID=="TuMe3254"),]
+
+#write.csv(intake,"C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/intake110821.csv", row.names = FALSE)
+
+necropsy <- necropsy[-c(2:7,9,11,14:15,18:23,26:37,40:64,66,68:73)]
+necropsy<-rename(necropsy, 
+                 Nec.SVL=SVL,
+                 Nec.TL=TL..cm....Ventral,
+                 Nec.Weight.kg=Weight..kg.,
+                 Nec.Sex=Sex,
+                 UF.Animal.ID=Animal.ID,
+                 fat.g=Fat.Wt..g.,
+                 GI.Wt=Total.GI..g.
+)
+str(necropsy)
+#write.csv(necropsy,"C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/necropsy110821.csv", row.names = FALSE)
+
+###FIX ANIMAL ID TYPOS
+#Sent to me from Kelly
+#fixed in the database; typos in TuMe intake names: tume1271, Tume1328, Tume1357,
+#TUMe1465, TUMe1479, TUMe1541, TUMe1577, TUMe1578, Tume2168,
+#TUMe479, Tume772, Tume961, Tume979, Tume2354, Tume2415, Tume2424
+
+#fixed in the database; typos in TuMe necropsy names: Tume1245, TuMe 1279, TuMe 1435,
+#Tume778, tume889, Tume2360, Tume2424
+
+results2 = setdiff(necropsy$UF.Animal.ID, intake$UF.Animal.ID)   # elements in b$y NOT in a$x
+
+results2 
+#Fixed in the database 
+#"TuMe 1279" - duplicate record, deleted; 
+#"TuMe 1435" - duplicate record, deleted; 
+#"TuMe156A" - need lowercase a, fixed.; 
+#"TuMe156B" - need lowercase b, fixed;  
+# "Unk1"- deleted
+
+#need to check datasheets, do not exist in intake. removing for now.
+#"TuMe1226"  "TuMe152"
+#"TuMe159"   "TuMe180"   "TuMe200"   
+necropsy<- necropsy[!(necropsy$UF.Animal.ID=="TuMe1226" | 
+                        necropsy$UF.Animal.ID=="TuMe152"|
+                        necropsy$UF.Animal.ID=="TuMe159"|
+                        necropsy$UF.Animal.ID=="TuMe180"|
+                        necropsy$UF.Animal.ID=="TuMe200"|
+                        necropsy$UF.Animal.ID=="Unk1"),]
+
+
+?merge
+#Merge two dataframes together, merging similar columns together
+tegu.data <- merge(intake, necropsy, by.x= "UF.Animal.ID", by.y= "UF.Animal.ID",all=T, 
+                   no.dups = F, incomparables = NULL)
+
+str(tegu.data)
+
+##Remove Tegu data before 2014 and after 2019
+tegu.data$Capture.Date <- as.Date(tegu.data$Capture.Date)
+#remove NA capture dates
+tegu.data<-tegu.data[-which(is.na(tegu.data$Capture.Date)),]
+myfunc <- function(x,y){tegu.data[tegu.data$Capture.Date >= x & tegu.data$Capture.Date <= y,]}
+Date1 <- as.Date("2014-02-11")
+Date2 <- as.Date("2019-10-10")
+tegu.data <- myfunc(Date1, Date2)
+min(tegu.data$Capture.Date) ## Double check dates are correct
+max(tegu.data$Capture.Date) ## Double check dates are correct
+
+#Remove Tegus held more than 3 days before euthanasia and missing euthanasia dates
+tegu.data$Euth.Date <- as.Date(tegu.data$Euth.Date)
+tegu.data$Date.Diff <- tegu.data$Euth.Date - tegu.data$Capture.Date
+
+#subset data where euthanasia date is not recorded
+tegu.EuthDateNA<-tegu.data[is.na(tegu.data$Date.Diff),]
+
+#remove tegus that were held more than 3 days
+tegu.data <- subset(tegu.data, Date.Diff >= 0)
+tegu.data <- subset(tegu.data, Date.Diff <= 3)
+min(tegu.data$Date.Diff) ## Double check time difference between capture and euthanasia are correct
+max(tegu.data$Date.Diff) ## Double check time difference between capture and euthanasia are correct
+
+#add back animals that are missing euthanasia date
+tegu.data <- merge(tegu.data, tegu.EuthDateNA, by=intersect(names(tegu.data), names(tegu.EuthDateNA)), all=T,
+                   no.dups = F, incomparables = NULL)
+
+#remove tegus missing measurements
+tegu.data<- subset(tegu.data, !is.na(Intake.SVL))
+tegu.data<- subset(tegu.data, !is.na(Intake.Weight.kg))
+tegu.data<-subset(tegu.data, !is.na(UTM.Easting))
+
+##Remove tegus that were not live on arrival
+tegu.data<-subset(tegu.data, tegu.data$Specimen.Condition=="Live")
+
+#Create column to use necropsy sex, only use intake sex when necropsy sex is unavailable
+#first change necropsy sex to "" and "Fe" and "Unknown"
+tegu.data$Nec.Sex<-ifelse(tegu.data$Nec.Sex== "M", "",
+                          ifelse(tegu.data$Nec.Sex=="F", "Fe", "Unknown"))
+unique(tegu.data$Nec.Sex)
+
+#if necropsy sex is NA fill with intake sex
+tegu.data$Analysis.Sex<-coalesce(tegu.data$Nec.Sex, tegu.data$Intake.Sex)
+
+#Remove Tegus with unknown sex
+tegu.data <- subset(tegu.data, subset = !(Analysis.Sex == "Unknown"))
+unique(tegu.data$Analysis.Sex) ## Double check you only have Fes and s
+
+##Remove Tegus with discrepancies in measurements (SLV and weight) 
+#calculate threshold for outlier SVL difference
+tegu.data$SVL_Diff <- abs(tegu.data$Intake.SVL- tegu.data$Nec.SVL)
+summary(tegu.data$SVL_Diff)
+
+iqr<-IQR(tegu.data$SVL_Diff, na.rm=T)
+lowerq=quantile(tegu.data$SVL_Diff,na.rm=T)[2]
+upperq=quantile(tegu.data$SVL_Diff,na.rm=T)[4]
+
+mild.threshold.upper = (iqr * 1.5) + upperq
+mild.threshold.lower = lowerq - (iqr * 1.5)
+mild.threshold.lower 
+mild.threshold.upper #1.7 difference
+
+#remove values with a difference of 1.7 cm ignore NAS, using absolute value so 
+#no negative numbers
+tegu.data <- subset(tegu.data, SVL_Diff <1.7|is.na(SVL_Diff))
+
+#calculate the same for weight
+
+#Weight
+summary(tegu.data$Intake.Weight.kg)
+tegu.data$Weight_Diff <- abs(tegu.data$Intake.Weight.kg- tegu.data$Nec.Weight.kg)
+summary(tegu.data$Weight_Diff)
+
+iqr<-IQR(tegu.data$Weight_Diff, na.rm=T)
+lowerq=quantile(tegu.data$Weight_Diff,na.rm=T)[2]
+upperq=quantile(tegu.data$Weight_Diff,na.rm=T)[4]
+
+mild.threshold.upper = (iqr * 1.5) + upperq
+mild.threshold.lower = lowerq - (iqr * 1.5)
+mild.threshold.lower 
+mild.threshold.upper #0.05
+
+#remove values with a difference of 0.05 kg ignore NAS
+tegu.data <- subset(tegu.data, Weight_Diff <0.05|is.na(Weight_Diff))
+
+#remove telemetry tegus
+telemetry.tegus<-tegu.data[grepl("AVID| held for telemetry", ignore.case=T, tegu.data$General.Notes),]
+
+tegu.data<-anti_join (tegu.data , telemetry.tegus , by = c("UF.Animal.ID"))
+
+#wrote this for exporting file to plot in GIS
+#write.csv(tegu.data, "tegudata20211111.csv", row.names=F)
+
+#add column for month and year
+tegu.data<-tegu.data %>%
+  dplyr::mutate(year = lubridate::year(tegu.data$Capture.Date), 
+                month.numb = lubridate::month(tegu.data$Capture.Date), 
+                day = lubridate::yday(tegu.data$Capture.Date))
+
+#convert month.num to name
+tegu.data$month<-month.abb[tegu.data$month.numb]
+tegu.data$month<-factor(tegu.data$month, levels=month.abb)
+##Setting data table up 
+tegu.data$mass.g <- with(tegu.data, Intake.Weight.kg*1000)##body mass in grams
+tegu.data$percfat <- with(tegu.data, fat.g/mass.g*100)##calculating fat percentage
+tegu.data$fulton <- with(tegu.data, (mass.g/Intake.SVL^3)*10^2)##multiplied by 10^2 to make mixed number 
+#tegu.data$noGI.mass <- (tegu.data$mass.g -tegu.data$Total.GI..g.)
+
+#Changing Sex to factor
+tegu.data$Analysis.Sex<-factor(tegu.data$Analysis.Sex, levels=c("Female", "Male"), ordered=T)
+levels(tegu.data$Analysis.Sex)
+
+##Exploratory graphs
+#SVL data
+hist(tegu.data$Intake.SVL, breaks=100, main="Tegu SVL")
+abline(v=30, col="red",lwd=2)##Vertical line at svl = 30, cutoff for adult size class
+
+#fultons K
+#remove data from tegu.data which are clearly a result of typos
+tegu.data<-tegu.data[!(tegu.data$UF.Animal.ID=="TuMe2339"|tegu.data$UF.Animal.ID=="TuMe3178"),]
 
 hist(tegu.data$fulton, breaks=100, main="Fulton's K")
 abline(v=2.77, col="red",lwd=2)
 
+##Dealing with date, converting date from character to actual date (POSIXct format)
+class(tegu.data$Capture.Date)
+class(tegu.data$month)
+tegu.data$month <-month.abb[tegu.data$month]
+levels(tegu.data$month)
+
+str(tegu.data)
+
+range(tegu.data$Intake.SVL, na.rm=TRUE)
+summary(tegu.data$Intake.SVL)
+
+par(mfrow=c(1,1))
 hist(tegu.data$Intake.SVL, breaks=100, main="Tegu SVL")#histogram of SVL data
 abline(v=30, col="red",lwd=2)##Verticle line at svl = 30, cutoff for adult size class
+#abline(v=, col="red",lwd=2)##Verticle line at svl = 30, cutoff for adult size class
+boxcox(tegu.data$Intake.SVL)
 
-#All
-tegu.data %>% 
-  group_by(Analysis.Sex) %>%
-  summarise(
-    n()
-  )
-tegu.data %>%
-  summarise(
-    MSVL = mean(Intake.SVL),
-    SDSVL = sd(Intake.SVL)
-  )
-tegu.data %>%
-  summarise(
-    MMassL = mean(mass.g),
-    SDMass = sd(mass.g)
-  )
-tegu.data %>%
-  summarise(
-    MFK = mean(fulton),
-    SDFK = sd(fulton)
-  )
-tegu.data %>%
-  summarise(
-    MFat = mean(fat.g, na.rm = T),
-    SDFat = sd(fat.g, na.rm = T)
-  )
-tegu.data %>%
-  summarise(
-    MFatPerc = mean(percfat, na.rm = T),
-    SDFatPerc = sd(percfat, na.rm = T)
-  )
-tegu.data %>%
-  subset(percfat >=0) %>%
-  summarise(
-    n()
-  )
+hist(tegu.data$fulton, breaks=100, main="Fulton's K excluding hatchlings and outliers")
+boxcox(tegu.data$fulton) #Not normal
+#tegu.data<-read.csv("tegudatanooutliers2022feb17.csv", header=T)
 
-#Groups
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    n()
-  )
-tegu.data %>%
-  group_by(sizeclass, Analysis.Sex) %>%
-  summarise(
-    n()
-  )
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MSVL = mean(Intake.SVL),
-    SDSVL = sd(Intake.SVL)
-  )
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MMassL = mean(mass.g),
-    SDMass = sd(mass.g)
-  )
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFK = mean(fulton),
-    SDFK = sd(fulton)
-  )
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFat = mean(fat.g, na.rm = T),
-    SDFat = sd(fat.g, na.rm = T)
-  )
-tegu.data %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFatPerc = mean(percfat, na.rm = T),
-    SDFatPerc = sd(percfat, na.rm = T)
-  )
-tegu.data %>%
-  subset(percfat >=0) %>%
-  group_by(sizeclass) %>%
-  summarise(
-    n()
-  )
+#### Add distance and environmental data####
+teguhabdat<-read.csv("C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/20220224habdata.csv")
+unique(teguhabdat$Hab1)
+teguhabdat$Hab.Name1<- ifelse(teguhabdat$Hab1 == 4, "Prairie and Bog",
+                              ifelse(teguhabdat$Hab1== 5, " Marshes",
+                                     ifelse(teguhabdat$Hab1 == 6, "Freshwater Forrested Wetland",
+                                            ifelse(teguhabdat$Hab1 == 7, "Cultural - Lacustrine",
+                                                   ifelse(teguhabdat$Hab1 == 9, "Mangrove Swamp",
+                                                          ifelse(teguhabdat$Hab1== 10, "Scrub Mangrove",
+                                                                 ifelse(teguhabdat$Hab1== 12, "High Intensity Urban", "Cropland")))))))
 
-#### 2. Calling and exploring native data----
-Native <- read.csv("NativeTeguDat.csv")
-merianae<-subset(Native, Native$Species %in% "merianae")
-merianae$mass.g <- with(merianae, BM*1000)##body mass in grams
-merianae$fulton <- with(merianae, (mass.g/SVL^3)*10^2)
-merianae$percfat<-with(merianae, (FatBody/mass.g)*100)
-merianae$lsvl<-log(merianae$SVL)
-merianae$lmass<-log(merianae$mass.g)
-merianae$Date.1 <- as.Date(merianae$Date, "%m/%d/%Y")
+unique(teguhabdat$Hab2)
+teguhabdat$Hab.Name2<- ifelse(teguhabdat$Hab2==4, "mixed scrub shrub wetland",
+                              ifelse(teguhabdat$Hab2==5, "Marshes",
+                                     ifelse(teguhabdat$Hab2== 6, "Glades Marsh",
+                                            ifelse(teguhabdat$Hab2==7, "mixed hardwood wetlands",
+                                                   ifelse(teguhabdat$Hab2 ==8, "artificial impoundment",
+                                                          ifelse(teguhabdat$Hab2==11, "Mangrove swamp",
+                                                                 ifelse(teguhabdat$Hab2==12, "scrub mangrove",
+                                                                        ifelse(teguhabdat$Hab2==14, "residential - med",
+                                                                               ifelse(teguhabdat$Hab2==15, "institutional",
+                                                                                      ifelse(teguhabdat$Hab2 ==17, "field crops", "residential high"))))))))))
 
-#add column for month and year
-merianae<-merianae %>%
-  dplyr::mutate(year = lubridate::year(merianae$Date.1), 
-                month.numb = lubridate::month(merianae$Date.1), 
-                day = lubridate::yday(merianae$Date.1))
+teguhabdat$HabCat<-ifelse(teguhabdat$Hab1 == 4, "Prairie and Bog",
+                          ifelse(teguhabdat$Hab1== 5, "Marshes",
+                                 ifelse(teguhabdat$Hab1 == 6, "Freshwater Forrested Wetland",
+                                        ifelse(teguhabdat$Hab1 == 7, "Urban",
+                                               ifelse(teguhabdat$Hab1 == 9, "Mangrove Swamp",
+                                                      ifelse(teguhabdat$Hab1== 10, "Mangrove Swamp",
+                                                             ifelse(teguhabdat$Hab1== 12,"Urban","Urban")))))))
+teguhabdat$Habitat<-ifelse(teguhabdat$Hab1 == 4, "1",
+                           ifelse(teguhabdat$Hab1== 5, "2",
+                                  ifelse(teguhabdat$Hab1 == 6, "3",
+                                         ifelse(teguhabdat$Hab1 == 7, "4",
+                                                ifelse(teguhabdat$Hab1 == 9, "5",
+                                                       ifelse(teguhabdat$Hab1== 10, "5",
+                                                              ifelse(teguhabdat$Hab1== 12,"4","4")))))))
+
+names(teguhabdat) <- gsub("_", ".", names(teguhabdat)) 
+teguhabdat$Capture.Date<-as.Date(teguhabdat$Capture.Date, "%m/%d/%Y")
+teguhabdat$Euth.Date<-as.Date(teguhabdat$Euth.Date, "%m/%d/%Y")
+class(teguhabdat$Capture.Date)
+
+#Import FAWN environmental data
+env.data<-read.csv("C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/FAWN_report.csv")
+
+#merge teguhabdat with tegu.data
+tegu.data<- merge(tegu.data, teguhabdat, all.y=T, incomparables=NULL)
+
+#Need to average environmental data from 2014-2019 for each month
+#make full date
+env.data$Period<-as.Date(paste("01-", env.data$Period, sep = ""), format = "%d-%b-%y")
+
+#create new columns
+env.data<-env.data %>%
+  dplyr::mutate(year = lubridate::year(env.data$Period), 
+                month.numb = lubridate::month(env.data$Period))
 
 #convert month.num to name
-merianae$month<-month.abb[merianae$month.numb]
-merianae$month<-factor(merianae$month, levels=month.abb)
+env.data$month<-month.abb[env.data$month.numb]
+env.data$month<-factor(env.data$month, levels=month.abb)
 
-#split into groups
-merianae$sizeclass <- factor(ifelse(merianae$SVL <=20.2, "Group1", 
-                                    ifelse(merianae$SVL>=30.0, "Group3","Group2")))
+#remove unused columns
+env.data <- env.data[-c(1,8,10)]
+#rename columns
+env.data<-rename(env.data, 
+                 Avg.Temp.F=X60cm.T.avg..F.,
+                 Min.Temp.F=X60cm.T.min..F.,
+                 Max.Temp.F= X60cm.T.max..F.,
+                 Rain.in=X2m.Rain.tot..in.,
+                 Rain.Max.15.in=X2m.Rain.max.over.15min..in.)
+#convert F to C, and inches to centimeters
+#library(weathermetrics)
+env.data$Avg.Temp.C<-fahrenheit.to.celsius(env.data$Avg.Temp.F)
+env.data$Min.Temp.C<-fahrenheit.to.celsius(env.data$Min.Temp.F)
+env.data$Max.Temp.C<-fahrenheit.to.celsius(env.data$Max.Temp.F)
+env.data$Rain.cm<-env.data$Rain.in*2.54
+env.data$Rain.Max.15.cm<-env.data$Rain.Max.15.in*2.54
 
-#remove outliers
-#IQR for outliers in fulton
-iqr<-IQR(merianae$fulton, na.rm=T)
+#add monthly average to each tegu based on capture date
+tegu.data<-merge(tegu.data, env.data, by.x=c("month", "year"), by.y=c("month", "year"), all=TRUE)
 
-lowerq=quantile(merianae$fulton, na.rm=T)[2]
-upperq=quantile(merianae$fulton, na.rm=T)[4]
+#Remove environmental data that has no tegus associateed with it
+tegu.data<-tegu.data%>% drop_na(UF.Animal.ID)
+
+#get julian date
+tegu.data$Capture.Date<- as.Date(tegu.data$Capture.Date)
+
+tegu.data$julian<-NA
+tegu.data$julian<-yday(tegu.data$Capture.Date)
+
+#Check slope for fultons K
+#take log of SVL and weight
+tegu.data$lsvl<-log(tegu.data$Intake.SVL)
+tegu.data$ltl<-log(tegu.data$Intake.TL)
+tegu.data$lmass<-log(tegu.data$mass.g)
+
+#create groups
+#Group 1 = 0-20.2; Group 2 = 20.2-30.0, Group 3 = 30.0+
+tegu.data$sizeclass <- factor(ifelse(tegu.data$Intake.SVL <=20.2, "Group1", 
+                                     ifelse(tegu.data$Intake.SVL >=30.1, "Group3","Group2")))
+
+#Create dummy variables for habitat, categorical- 5 categories
+#install.packages('fastDummies')
+#library(fastDummies)
+#tegu.data <- dummy_cols(tegu.data, select_columns = c('Habitat', 'year', 'month.numb'))
+
+tegu.data$d1 <- as.numeric(ifelse(tegu.data$Habitat==1, "1", "0"))
+tegu.data$d2 <- as.numeric(ifelse(tegu.data$Habitat==2, "1", "0"))
+tegu.data$d3 <- as.numeric(ifelse(tegu.data$Habitat==3, "1", "0"))
+tegu.data$d4 <- as.numeric(ifelse(tegu.data$Habitat==4, "1", "0"))
+tegu.data$d5 <- as.numeric(ifelse(tegu.data$Habitat==5, "1", "0"))
+
+#create dummy variables for year 2014-2019
+tegu.data$y14<- as.numeric(ifelse(tegu.data$year==2014, "1","0"))
+tegu.data$y15<- as.numeric(ifelse(tegu.data$year==2015, "1","0"))
+tegu.data$y16<- as.numeric(ifelse(tegu.data$year==2016, "1","0"))
+tegu.data$y17<- as.numeric(ifelse(tegu.data$year==2017, "1","0"))
+tegu.data$y18<- as.numeric(ifelse(tegu.data$year==2018, "1","0"))
+tegu.data$y19<- as.numeric(ifelse(tegu.data$year==2019, "1","0"))
+
+#create dummy variables for month (february - december)
+tegu.data$m2<-as.numeric(ifelse(tegu.data$month.numb==2,"1", "0" ))
+tegu.data$m3<-as.numeric(ifelse(tegu.data$month.numb==3,"1", "0" ))
+tegu.data$m4<-as.numeric(ifelse(tegu.data$month.numb==4,"1", "0" ))
+tegu.data$m5<-as.numeric(ifelse(tegu.data$month.numb==5,"1", "0" ))
+tegu.data$m6<-as.numeric(ifelse(tegu.data$month.numb==6,"1", "0" ))
+tegu.data$m7<-as.numeric(ifelse(tegu.data$month.numb==7,"1", "0" ))
+tegu.data$m8<-as.numeric(ifelse(tegu.data$month.numb==8,"1", "0" ))
+tegu.data$m9<-as.numeric(ifelse(tegu.data$month.numb==9,"1", "0" ))
+tegu.data$m10<-as.numeric(ifelse(tegu.data$month.numb==10,"1", "0" ))
+tegu.data$m11<-as.numeric(ifelse(tegu.data$month.numb==11,"1", "0" ))
+tegu.data$m12<-as.numeric(ifelse(tegu.data$month.numb==12,"1", "0" ))
+
+#remove hand captured tegu
+tegu.data<- tegu.data[!(tegu.data$UF.Animal.ID=="TuMe2348"),] 
+
+#IQR for outliers in fulton, UF Data
+iqr<-IQR(tegu.data$fulton)
+
+lowerq=quantile(tegu.data$fulton)[2]
+upperq=quantile(tegu.data$fulton)[4]
 
 mild.threshold.upper = (iqr * 1.5) + upperq
 mild.threshold.lower = lowerq - (iqr * 1.5)
-mild.threshold.lower #1.931
-mild.threshold.upper #4.4347
+mild.threshold.lower #
+mild.threshold.upper #
+#any K value outside of 2.16-3.95 is a minor outlier
 
-#remove outliers
-merianae2<-merianae[which(merianae$fulton<4.434758 & merianae$fulton>1.931379),]
-merianae2 <- merianae2[complete.cases(merianae2$Sex),]
-merianae2 <- merianae2[complete.cases(merianae2$SVL),]
-merianae2 <- merianae2[complete.cases(merianae2$mass.g),]
+#UF data remove outliers
+tegu.data<-tegu.data[which(tegu.data$fulton<3.95& tegu.data$fulton>2.16),]
+write.csv(tegu.data, "tegudatanooutliers2022Aug25.csv", row.names=F)
+#remove column
+tegu.data <- subset (tegu.data, select = -c(Age.Class))
+#Create Data Subsets
+Group1<-subset(tegu.data, tegu.data$sizeclass=="Group1")
+Group2<-subset(tegu.data, tegu.data$sizeclass== "Group2")
+Group3<-subset(tegu.data, tegu.data$sizeclass== "Group3")
 
-#All
-merianae2 %>% 
-  group_by(Sex) %>%
-  summarise(
-    n()
-  )
+#check slope
+tegu.data$lsvl<-log(tegu.data$Intake.SVL)
+tegu.data$ltl<-log(tegu.data$Intake.TL)
+tegu.data$lmass<-log(tegu.data$mass.g)
 
-merianae2 %>%
-  summarise(
-    MSVL = mean(SVL),
-    SDSVL = sd(SVL)
-  )
-merianae2 %>%
-  summarise(
-    MMassL = mean(mass.g),
-    SDMass = sd(mass.g)
-  )
-merianae2 %>%
-  summarise(
-    MFK = mean(fulton),
-    SDFK = sd(fulton)
-  )
-merianae2 %>%
-  summarise(
-    MFat = mean(FatBody, na.rm = T),
-    SDFat = sd(FatBody, na.rm = T)
-  )
-merianae2 %>%
-  summarise(
-    MFatPerc = mean(percfat, na.rm = T),
-    SDFatPerc = sd(percfat, na.rm = T)
-  )
-merianae2 %>%
-  subset(percfat >=0) %>%
-  summarise(
-    n()
-  )
-
-#Groups
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    n()
-  )
-merianae2 %>%
-  group_by(sizeclass, Sex) %>%
-  summarise(
-    n()
-  )
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MSVL = mean(SVL),
-    SDSVL = sd(SVL)
-  )
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MMassL = mean(mass.g),
-    SDMass = sd(mass.g)
-  )
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFK = mean(fulton),
-    SDFK = sd(fulton)
-  )
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFat = mean(FatBody, na.rm = T),
-    SDFat = sd(FatBody, na.rm = T)
-  )
-merianae2 %>%
-  group_by(sizeclass) %>%
-  summarise(
-    MFatPerc = mean(percfat, na.rm = T),
-    SDFatPerc = sd(percfat, na.rm = T)
-  )
-merianae2 %>%
-  subset(percfat >=0) %>%
-  group_by(sizeclass) %>%
-  summarise(
-    n()
-  )
-
-#### 3. comparing native and invasive----
-  #### 3.1 Difference in size and fat----
-#Invasive
-a <- subset(tegu.data, Analysis.Sex %in% "Female")
-b <- subset(tegu.data, Analysis.Sex %in% "Male")
-wilcox.test(a$Intake.SVL, b$Intake.SVL)
-wilcox.test(a$mass.g, b$mass.g)
-wilcox.test(a$fat.g, b$fat.g)
-a %>%
-  summarise(
-    MFat = mean(fat.g, na.rm = T),
-    SDFat = sd(fat.g, na.rm = T)
-  )
-b %>%
-  summarise(
-    MFat = mean(fat.g, na.rm = T),
-    SDFat = sd(fat.g, na.rm = T)
-  )
-wilcox.test(a$percfat, b$percfat)
-a %>%
-  summarise(
-    MFat = mean(percfat, na.rm = T),
-    SDFat = sd(percfat, na.rm = T)
-  )
-b %>%
-  summarise(
-    MFat = mean(percfat, na.rm = T),
-    SDFat = sd(percfat, na.rm = T)
-  )
-
-#Native
-a <- subset(merianae2, Sex %in% "female")
-b <- subset(merianae2, Sex %in% "male")
-wilcox.test(a$SVL, b$SVL)
-a %>%
-  summarise(
-    MSVL = mean(SVL),
-    SDSVL = sd(SVL)
-  )
-b %>%
-  summarise(
-    MSVL = mean(SVL),
-    SDSVL = sd(SVL)
-  )
-
-wilcox.test(a$mass.g, b$mass.g)
-a %>%
-  summarise(
-    MMass = mean(mass.g),
-    SDMass = sd(mass.g)
-  )
-b %>%
-  summarise(
-    MFat = mean(mass.g),
-    SDFat = sd(mass.g)
-  )
-
-wilcox.test(a$FatBody, b$FatBody)
-a %>%
-  summarise(
-    MFat = mean(FatBody, na.rm = T),
-    SDFat = sd(FatBody, na.rm = T)
-  )
-b %>%
-  summarise(
-    MFat = mean(FatBody, na.rm = T),
-    SDFat = sd(FatBody, na.rm = T)
-  )
-
-wilcox.test(a$percfat, b$percfat)
-a %>%
-  summarise(
-    MFat = mean(percfat, na.rm = T),
-    SDFat = sd(percfat, na.rm = T)
-  )
-b %>%
-  summarise(
-    MFat = mean(percfat, na.rm = T),
-    SDFat = sd(percfat, na.rm = T)
-  )
-
-  #### 3.2 Differences by group----
-#South Florida
-#Overall
-wilcox.test()
-
-#SVL
-tegu.data %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(Intake.SVL ~ Analysis.Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-#Mass
-tegu.data %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(mass.g ~ Analysis.Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-#fat percentage
-tegu.data %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(percfat ~ Analysis.Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-#Argentina
-#SVL
-merianae2 %>%
-  subset(!sizeclass %in% "Group1") %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(SVL ~ Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-#Mass
-merianae2 %>%
-  subset(!sizeclass %in% "Group1") %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(mass.g ~ Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-#fat percentage
-merianae2 %>%
-  subset(!sizeclass %in% "Group1") %>%
-  group_by(sizeclass) %>%
-  do(w = wilcox.test(percfat ~ Sex, data = ., paired = F)) %>%
-  summarise(sizeclass, 
-            Wilcox = w$p.value)
-
-  #### 3.3 Difference in body condition-----  
-a <- subset(tegu.data,sizeclass %in% "Group2")
-b <- subset(merianae2,sizeclass %in% "Group2")
-wilcox.test(a$fulton, b$fulton)
-
-a <- subset(tegu.data,sizeclass %in% "Group3")
-b <- subset(merianae2,sizeclass %in% "Group3")
-wilcox.test(a$fulton, b$fulton)
+summary(lm(lmass~lsvl, data=tegu.data))
+#check slope
+summary(lm(lmass~lsvl, data=Group1)) #3.07+-0.04
+summary(lm(lmass~lsvl, data=Group2)) #3.06+-0.3
+summary(lm(lmass~lsvl, data=Group3)) #2.97+- 0.07
 
 
-#### 4. Body condition analysis by groups #####
+#create data set excluding tegus with abnormalities
+
+##Remove Tegus having malformed limbs/spine, missing tail or limbs, because that affect weight. 
+#need to find a better way to do this? abnormal limbs?
+AbnormalTail <- tegu.data[grepl("kinked|Kinked|Regen|regen|Regenerated|regenerated|Broken|Nub|nub|broken|tip of tail|Nubbed|nubbed|tail tip missing| tail regeration| tail regneration|stump|stumpy|stub", ignore.case=T, tegu.data$Extremities.Notes), ]
+AbnormalTail2 <- tegu.data[grepl("kinked|Kinked|Regen|regen|Regenerated|regenerated|Broken|Nub|nub|broken|tip of tail|nubbed|Nubbed|Kink|kink|kinky|Kinky|dropped|Dropped|missing tail|Missing tail|no tail| No tail|tail tip missing| tail regeration| tail regneration|stump|stumpy|stub|missing part of tail|little piece of tail missing|regneration|rengeration", ignore.case= T, tegu.data$General.Notes), ]
+AbnormalTail3 <- tegu.data[grepl("kinked|Kinked|Regen|regen|Regenerated|regenerated|Broken|Nub|nub|broken|tip of tail|nubbed|Nubbed|Kink|kink|kinky|Kinky|dropped|Dropped|missing tail|Missing tail|no tail| No tail", ignore.case=T, tegu.data$Malformations), ]
+#combine and remove duplicates
+######### S. Smith helped
+
+Abnormaltail.All <- rbind(AbnormalTail, AbnormalTail2, AbnormalTail3)
+#View(Abnormaltail.All)
+Abnormaltail.AllND <- Abnormaltail.All[!duplicated(Abnormaltail.All$UF.Animal.ID), ]
+#View(Abnormaltail.AllND)
+
+MissingFeet<-tegu.data[grepl("missing front left foot|Missing front left foot|missing front right foot|Missing front right foot|missing limb|Missing limb|missing left arm|missing right arm|no foot|No foot|missing right forelimb| missing left forelimb|missing rear left leg|Missing rear left leg|Right rear foot gone|Rear right foot is missing|rear foot missing", ignore.case=T, tegu.data$Extremities.Notes), ]
+MissingFeet2<-tegu.data[grepl("rear right leg missing|Tip of tail missing|Tip of Tail Missing
+                              | Tip of tail is missing|Tail regeneration-|Tail regeneration| Stumpy| Stump| Stub|Right front foot missing| Rear right leg missing |No tail|Missing tip of the tail|Missing segment of tail| Missing part of tail| Missing left front foot| Missing front right limb| Little piece of tail missing| Missing front right leg|missing front left foot|Missing front left foot|missing front right foot|Missing front right foot|missing limb|Missing limb|missing left arm|missing right arm|no foot|No foot|missing right forelimb| missing left forelimb|missing rear left leg|Missing rear left leg|Right rear foot gone|Rear right foot is missing|rear foot missing|missing rear right foot|missing left front foot|missing front right limb|missing front right leg", ignore.case=T, tegu.data$General.Notes), ]
+MissingFeet3<-tegu.data[grepl("Tip of tail missing|Tip of Tail Missing| Tip of tail is missing|Tail regeneration-|Tail regeneration| Stumpy| Stump| Stub|Right front foot missing| Rear right leg missing |No tail|Missing tip of the tail|Missing segment of tail| Missing part of tail| Missing left front foot| Missing front right limb| Little piece of tail missing| Missing front right leg|missing front left foot|Missing front left foot|missing front right foot|Missing front right foot|missing limb|Missing limb|missing left arm|missing right arm|no foot|No foot|missing right forelimb| missing left forelimb|missing rear left leg|Missing rear left leg|Right rear foot gone|Rear right foot is missing|rear foot missing", ignore.case=T, tegu.data$Malformations), ]
+
+##Combine and remove duplicates
+MissingFeet.All <- rbind(MissingFeet, MissingFeet2, MissingFeet3)
+
+MissingFeet.AllND <- MissingFeet.All[!duplicated(MissingFeet.All$UF.Animal.ID), ]
+
+#combine dataframes
+abnormalities.master <- rbind(MissingFeet.AllND, Abnormaltail.AllND)
+abnormalities.masterND<-abnormalities.master[!duplicated(abnormalities.master$UF.Animal.ID), ]
+
+#remove abnormalities from tegu.data
+tegu.data<-anti_join ( tegu.data , abnormalities.masterND , by = c("UF.Animal.ID"))
+
+#Calculate Fulton's K on tegu.data and compare with Fulton's K of abnormalities.master
+tegu.data$mass.g <- tegu.data$Intake.Weight.kg*1000##body mass in grams
+tegu.data$fulton <- with(tegu.data, (mass.g/Intake.SVL^3)*10^2)##multiplied by 10^2 to make mixed number 
+plot(tegu.data$mass.g ~ tegu.data$Intake.SVL^3)
+abnormalities.masterND$mass.g <- abnormalities.masterND$Intake.Weight.kg*1000##body mass in grams
+abnormalities.masterND$fulton <- with(abnormalities.masterND, (mass.g/Intake.SVL^3)*10^2)##multiplied by 10^2 to make mixed number 
+
+#check for significance
+t.test(tegu.data$fulton, abnormalities.masterND$fulton) 
+#not significant, P=0.185
+
+#recombine tegu.data and abnormal data
+tegu.data <-merge(tegu.data, abnormalities.masterND, by=intersect(names(tegu.data), names(abnormalities.masterND)), all=T,
+                  no.dups = F, incomparables = NULL)
+#tegu remove abnormal
+tegu.data.ab<-anti_join (tegu.data , abnormalities.masterND , by = c("UF.Animal.ID"))
+
+#remove and outliers
+#IQR for outliers in fulton, UF Data
+iqr.ab<-IQR(tegu.data.ab$fulton)
+
+lowerq.ab=quantile(tegu.data.ab$fulton)[2]
+upperq.ab=quantile(tegu.data.ab$fulton)[4]
+
+mild.threshold.upper.ab = (iqr.ab * 1.5) + upperq.ab
+mild.threshold.lower.ab = lowerq.ab - (iqr.ab * 1.5)
+mild.threshold.lower.ab #2.16
+mild.threshold.upper.ab #3.95
+#any K value outside of 2.16-3.95 is a minor outlier
+
+#tegu.data.ab remove outliers
+tegu.data.ab<-tegu.data.ab[which(tegu.data.ab$fulton<3.95 & tegu.data.ab$fulton>2.16),]
+write.csv(tegu.data.ab, "tegudata.ab.nooutliers.20220825.csv", row.names=F)
+
+#create groups
+Group1.ab<-subset(tegu.data.ab, tegu.data.ab$sizeclass=="Group1")
+Group2.ab<-subset(tegu.data.ab, tegu.data.ab$sizeclass== "Group2")
+Group3.ab<-subset(tegu.data.ab, tegu.data.ab$sizeclass== "Group3")
+
+
+#check slope
+summary(lm(lmass~lsvl, data=tegu.data.ab)) #3.1 +- 0.01
+summary(tegu.data.ab)
+#check slope
+summary(lm(lmass~lsvl, data=Group1.ab)) #3.04 +- 0.04
+summary(lm(lmass~lsvl, data=Group2.ab)) #3.08 +- 0.03
+summary(lm(lmass~lsvl, data=Group3.ab)) #2.96 +- 0.09
+
+
+Group1.ab$slope<-(c(3.04))
+Group2.ab$slope<-(c(3.08))
+Group3.ab$slope<-(c(2.96))
+
+
+#save file
+write.csv(tegu.data, "tegudata20220825.csv", row.names=F)
+write.csv(tegu.data.ab, "tegudata.ab20220825.csv", row.names=F)
+
+
+#### Histogram
+hist(tegu.data.ab$fulton, breaks=100, xlab="Fulton's Values", main="Tegu Fulton's Values")#histogram of SVL data
+mean(tegu.data.ab$fulton)
+abline(v=3.06, col="red",lwd=2)##Verticle line at svl = 30, cutoff for adult size class
+####condition index####
+
+unique(Group1.ab$Body.Condition)
+
+#Group 1 - hatchlings
+emaciated1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "emaciated")
+underweight1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "underweight/lean")
+ideal1<-subset(Group1.ab,Group1.ab$Body.Condition %in% "ideal")
+
+mean(emaciated1$fulton) 
+sd(emaciated1$fulton)
+
+mean(underweight1$fulton) 
+sd(underweight1$fulton) 
+
+mean(ideal1$fulton) 
+sd(ideal1$fulton) 
+
+#group 2 - juveniles
+emaciated2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "emaciated")
+underweight2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "underweight/lean")
+ideal2<-subset(Group2.ab,Group2.ab$Body.Condition %in% "ideal")
+
+mean(emaciated2$fulton) #2.422
+sd(emaciated2$fulton) #0.24
+
+mean(underweight2$fulton) #2.8
+sd(underweight2$fulton) #0.30
+
+mean(ideal2$fulton) #3.01
+sd(ideal2$fulton) #0.33
+
+#group 3 - subadults
+emaciated3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "emaciated")
+underweight3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "underweight/lean")
+ideal3<-subset(Group3.ab,Group3.ab$Body.Condition %in% "ideal")
+
+mean(emaciated3$fulton) #2.82
+sd(emaciated3$fulton) #0.25
+
+mean(underweight3$fulton) #2.98
+sd(underweight3$fulton) #0.24
+
+mean(ideal3$fulton) #3.09
+sd(ideal3$fulton)#0.29
+
+#### 3. Histograms of UF Data####
+
+# make histogram of mass, svl and FK
+summary (tegu.data.ab)
+
+mean(tegu.data.ab$Intake.SVL)
+sd(tegu.data.ab$Intake.SVL)
+
+mean(tegu.data.ab$Intake.TL)
+sd(tegu.data.ab$Intake.TL)
+
+mean(tegu.data.ab$mass.g)
+sd(tegu.data.ab$mass.g)
+
+mean(tegu.data.ab$fat.g, na.rm=T)
+sd(tegu.data.ab$fat.g, na.rm=T)
+
+mean(tegu.data.ab$percfat, na.rm=T)
+sd(tegu.data.ab$percfat, na.rm=T)
+
+#split males/females
 tegu.ab.male<- subset(tegu.data.ab, tegu.data.ab$Analysis.Sex == "Male")
 tegu.ab.female<-subset(tegu.data.ab, tegu.data.ab$Analysis.Sex == "Female")
 
@@ -423,7 +628,7 @@ sd(tegu.ab.male$percfat, na.rm=T)
 mean(tegu.ab.female$percfat, na.rm=T)
 sd(tegu.ab.female$percfat, na.rm=T)
 wilcox.test(tegu.data.ab$percfat~ tegu.data.ab$Analysis.Sex)
-
+##
 par(mar=c(2,2,2,2))
 hist(tegu.data.ab$mass.g, breaks = 100, main= "Tegu mass (g)")
 shapiro.test(tegu.data.ab$mass.g) #not normal
@@ -433,8 +638,10 @@ hist(tegu.data.ab$fulton, breaks=100, main="Fulton's K")
 shapiro.test(tegu.data.ab$fulton) #not normal
 hist(tegu.data.ab$percfat, breaks=100)
 hist(tegu.data.ab$fat.g, breaks=100)
+####
+#### 4. T.Tests ####
+#### 4a. Shapiro Test####
 
-#### Testing for normality on covariates and difference among covariates by fulton ####
 #all...nothing is normal
 shapiro.test(tegu.data.ab$fulton)#not normal
 shapiro.test(tegu.data.ab$Intake.SVL) #not normal
@@ -515,7 +722,91 @@ shapiro.test(Group3.ab$Rain.Max.15.cm)
 shapiro.test(Group3.ab$Min.Temp.C)
 shapiro.test(Group3.ab$julian)
 
-##Fligner-Killeen test
+
+#### 4.a.1 Box-plot ####
+
+#all...nothing is normal
+shapiro.test(tegu.data.ab$fulton)#not normal
+shapiro.test(tegu.data.ab$Intake.SVL) #not normal
+shapiro.test(tegu.data.ab$mass.g)
+shapiro.test(tegu.data.ab$percfat)
+shapiro.test(tegu.data.ab$fat.g)
+shapiro.test(tegu.data.ab$C110111.DIST)
+shapiro.test(tegu.data.ab$C110424.DIST)
+shapiro.test(tegu.data.ab$JDC.DIST)
+shapiro.test(tegu.data.ab$Pond.DIST)
+shapiro.test(tegu.data.ab$UP.DIST)
+shapiro.test(tegu.data.ab$WCS.DIST)
+shapiro.test(tegu.data.ab$Habitat)
+shapiro.test(tegu.data.ab$Avg.Temp.C)
+shapiro.test(tegu.data.ab$Max.Temp.C)
+shapiro.test(tegu.data.ab$Rain.cm)
+shapiro.test(tegu.data.ab$Rain.Max.15.cm)
+shapiro.test(tegu.data.ab$Min.Temp.C)
+shapiro.test(tegu.data.ab$julian)
+
+#Group 1
+shapiro.test(Group1.ab$fulton)#not normal
+shapiro.test(Group1.ab$Intake.SVL) 
+shapiro.test(Group1.ab$mass.g)
+shapiro.test(Group1.ab$percfat)
+shapiro.test(Group1.ab$fat.g)
+shapiro.test(Group1.ab$C110111.DIST)
+shapiro.test(Group1.ab$C110424.DIST)
+shapiro.test(Group1.ab$JDC.DIST)
+shapiro.test(Group1.ab$Pond.DIST)
+shapiro.test(Group1.ab$UP.DIST)
+shapiro.test(Group1.ab$WCS.DIST)
+shapiro.test(Group1.ab$Habitat)
+shapiro.test(Group1.ab$Avg.Temp.C)
+shapiro.test(Group1.ab$Max.Temp.C)
+shapiro.test(Group1.ab$Rain.cm)
+shapiro.test(Group1.ab$Rain.Max.15.cm)
+shapiro.test(Group1.ab$Min.Temp.C)
+shapiro.test(Group1.ab$julian)
+
+#Group 2
+shapiro.test(Group2.ab$fulton)#not normal
+shapiro.test(Group2.ab$Intake.SVL) 
+shapiro.test(Group2.ab$mass.g)
+shapiro.test(Group2.ab$percfat)
+shapiro.test(Group2.ab$fat.g)
+shapiro.test(Group2.ab$C110111.DIST)
+shapiro.test(Group2.ab$C110424.DIST)
+shapiro.test(Group2.ab$JDC.DIST)
+shapiro.test(Group2.ab$Pond.DIST)
+shapiro.test(Group2.ab$UP.DIST)
+shapiro.test(Group2.ab$WCS.DIST)
+shapiro.test(Group2.ab$Habitat)
+shapiro.test(Group2.ab$Avg.Temp.C)
+shapiro.test(Group2.ab$Max.Temp.C)
+shapiro.test(Group2.ab$Rain.cm)
+shapiro.test(Group2.ab$Rain.Max.15.cm)
+shapiro.test(Group2.ab$Min.Temp.C)
+shapiro.test(Group2.ab$julian)
+
+#Group 3
+shapiro.test(Group3.ab$fulton)#normal
+shapiro.test(Group3.ab$Intake.SVL) 
+shapiro.test(Group3.ab$mass.g)
+shapiro.test(Group3.ab$percfat)
+shapiro.test(Group3.ab$fat.g)
+shapiro.test(Group3.ab$C110111.DIST)
+shapiro.test(Group3.ab$C110424.DIST)
+shapiro.test(Group3.ab$JDC.DIST)
+shapiro.test(Group3.ab$Pond.DIST)
+shapiro.test(Group3.ab$UP.DIST)
+shapiro.test(Group3.ab$WCS.DIST)
+shapiro.test(Group3.ab$Habitat)
+shapiro.test(Group3.ab$Avg.Temp.C)
+shapiro.test(Group3.ab$Max.Temp.C)
+shapiro.test(Group3.ab$Rain.cm)
+shapiro.test(Group3.ab$Rain.Max.15.cm)
+shapiro.test(Group3.ab$Min.Temp.C)
+shapiro.test(Group3.ab$julian)
+
+
+#### 4b. Fligner-Killeen test####
 #all groups fulton variance by group, fulton is not normal
 fligner.test(tegu.data.ab$fulton, tegu.data.ab$sizeclass)#no
 fligner.test(tegu.data.ab$fulton, tegu.data.ab$Intake.SVL) #equvar
@@ -600,8 +891,10 @@ fligner.test(Group3.ab$fulton, Group3.ab$julian)
 fligner.test(Group3.ab$fulton, Group3.ab$year)
 fligner.test(Group3.ab$fulton, Group3.ab$month.numb)
 
-## Wilcoxon rank sum test tegu differences between Sex
-#all 
+
+#### 4c. Wilcoxn rank sum test ####
+
+#all tegu differences between Sex
 wilcox.test(tegu.data.ab$fulton~tegu.data.ab$Analysis.Sex)
 wilcox.test(tegu.data.ab$Intake.SVL~tegu.data.ab$Analysis.Sex )
 wilcox.test(tegu.data.ab$mass.g~tegu.data.ab$Analysis.Sex)
@@ -621,7 +914,7 @@ wilcox.test(tegu.data.ab$Min.Temp.C~tegu.data.ab$Analysis.Sex)#sig diff
 wilcox.test(tegu.data.ab$Rain.Max.15.cm~tegu.data.ab$Analysis.Sex)
 wilcox.test(tegu.data.ab$julian~tegu.data.ab$Analysis.Sex) #sig diff
 
-#Group 1 
+#Group 1 differences between sex
 wilcox.test(Group1.ab$fulton~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$Intake.SVL~Group1.ab$Analysis.Sex )
 wilcox.test(Group1.ab$mass.g~Group1.ab$Analysis.Sex)
@@ -643,7 +936,8 @@ wilcox.test(Group1.ab$julian~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$year~Group1.ab$Analysis.Sex)
 wilcox.test(Group1.ab$month.numb~Group1.ab$Analysis.Sex)
 
-#group 2 
+
+#group 2 differences between sex
 wilcox.test(Group2.ab$fulton~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$Intake.SVL~Group2.ab$Analysis.Sex ) 
 wilcox.test(Group2.ab$mass.g~Group2.ab$Analysis.Sex)
@@ -665,29 +959,31 @@ wilcox.test(Group2.ab$julian~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$year~Group2.ab$Analysis.Sex)
 wilcox.test(Group2.ab$month.numb~Group2.ab$Analysis.Sex)
 
-#group 3 
+#group 3 differences between sex
 wilcox.test(Group3.ab$fulton~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$Intake.SVL~Group3.ab$Analysis.Sex )
-wilcox.test(Group3.ab$mass.g~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$percfat~Group3.ab$Analysis.Sex) #sig diff
-wilcox.test(Group3.ab$fat.g~Group3.ab$Analysis.Sex) #sig diff
-wilcox.test(Group3.ab$C110111.DIST~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$Intake.SVL~Group3.ab$Analysis.Sex )
+#wilcox.test(Group3.ab$mass.g~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$percfat~Group3.ab$Analysis.Sex) #sig diff
+#wilcox.test(Group3.ab$fat.g~Group3.ab$Analysis.Sex) #sig diff
+#wilcox.test(Group3.ab$C110111.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$C110424.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$JDC.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Pond.DIST~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$UP.DIST~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$WCS.DIST~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$Habitat~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$WCS.DIST~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$Habitat~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Avg.Temp.C~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Max.Temp.C~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Rain.cm~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$Min.Temp.C~Group3.ab$Analysis.Sex) #sig diff
 wilcox.test(Group3.ab$Rain.Max.15.cm~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$julian~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$julian~Group3.ab$Analysis.Sex)
 wilcox.test(Group3.ab$year~Group3.ab$Analysis.Sex)
-wilcox.test(Group3.ab$month.numb~Group3.ab$Analysis.Sex)
+#wilcox.test(Group3.ab$month.numb~Group3.ab$Analysis.Sex)
 
-## Kruskal wallis test
+
+#### Kruskal wallis test ####
+
 #do krushkal walis test on fulton's k vs. sizeclass; all levels
 kruskal.test(tegu.data.ab$fulton, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$fulton, tegu.data.ab$sizeclass, method = 'bonferroni')
@@ -696,6 +992,7 @@ dunnTest(tegu.data.ab$fulton, tegu.data.ab$sizeclass, method = 'bonferroni')
 kruskal.test(tegu.data.ab$Intake.SVL, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$Intake.SVL, tegu.data.ab$sizeclass, method = 'bonferroni')
 
+
 #do krushkal walis test on TL vs. sizeclass/group; all levels
 kruskal.test(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass, method = 'bonferroni')
@@ -703,6 +1000,7 @@ dunnTest(tegu.data.ab$Intake.TL, tegu.data.ab$sizeclass, method = 'bonferroni')
 #do krushkal walis test on mass vs. sizeclass; all levels
 kruskal.test(tegu.data.ab$mass.g, tegu.data.ab$sizeclass)
 dunnTest(tegu.data.ab$mass.g, tegu.data.ab$sizeclass, method = 'bonferroni')
+
 
 #do krushkal walis test on percent fat vs. sizeclass
 kruskal.test(tegu.data.ab$percfat, tegu.data.ab$sizeclass)
@@ -770,145 +1068,6 @@ dunnTest(tegu.data$Rain.Max.15.cm, tegu.data$sizeclass, method = 'bonferroni')
 kruskal.test(tegu.data$julian, tegu.data$sizeclass)
 dunnTest(tegu.data$julian, tegu.data$sizeclass, method = 'bonferroni')
 
-#create groups 2
-Group1.N2<-subset(merianae2, merianae2$sizeclass=="Group1")
-Group2.N2<-subset(merianae2, merianae2$sizeclass== "Group2")
-Group3.N2<-subset(merianae2, merianae2$sizeclass== "Group3")
-
-#check male and female
-Group1.male<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Male")
-Group2.male<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Male")
-Group3.male<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Male")
-
-Group1.female<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Female")
-Group2.female<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Female")
-Group3.female<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Female")
-
-#check groups
-#all, n =673
-mean(merianae2$SVL,na.rm=T) #38.21
-mean(merianae2$fulton, na.rm=T) #3.168
-mean(tegu.data.ab$fulton, na.rm=T) #3.06
-sd(merianae2$fulton, na.rm = T)#0.418
-
-#group 1, n = 2
-mean(Group1.N2$SVL,na.rm=T) #19.5
-sd(Group1.N2$SVL, na.rm=T) #0.103
-mean(Group1.N2$fulton, na.rm=T) #2.697
-sd(Group1.N2$fulton, na.rm=T) #0.103
-mean(Group1.N2$mass.g, na.rm=T) #2.697
-sd(Group1.N2$mass.g, na.rm=T) #0.103
-mean(Group1.N2$FatBody, na.rm=T) #2.697
-sd(Group1.N2$FatBody, na.rm=T) #0.103
-summary(Group2.N2$percfat)
-sd(Group2.N2$percfat, na.rm=T)
-
-#group 2, n = 18
-mean(Group2.N2$SVL,na.rm=T) #28.027
-sd(Group2.N2$SVL, na.rm=T)
-mean(Group2.N2$fulton, na.rm=T) #2.94
-sd(Group2.N2$fulton, na.rm=T) #0.392
-mean(Group2.N2$mass.g, na.rm=T) #2.697
-sd(Group2.N2$mass.g, na.rm=T) #0.103
-mean(Group2.N2$FatBody, na.rm=T) #2.697
-sd(Group2.N2$FatBody, na.rm=T) #0.103
-
-#group 3, n = 653
-mean(Group3.N2$SVL,na.rm=T) #38.548
-sd(Group3.N2$SVL, na.rm=T)
-mean(Group3.N2$fulton, na.rm=T) #3.17
-sd(Group3.N2$fulton, na.rm=T) #0.417
-mean(Group3.N2$mass.g, na.rm=T) #2.697
-sd(Group3.N2$mass.g, na.rm=T) #0.103
-mean(Group3.N2$FatBody, na.rm=T) #2.697
-sd(Group3.N2$FatBody, na.rm=T) #0.103
-
-summary(Group3.N2$FatBody)
-summary(Group3.N2$fulton)
-
-summary(Group2.N2$FatBody)
-summary(Group2.N2$fulton)
-
-#Invasive
-#average Fulton's K, n = 1634
-mean(tegu.data.ab$Intake.SVL) #23.662
-mean(tegu.data.ab$fulton) #3.06
-sd(tegu.data.ab$fulton) #0.33
-
-#group 1, n = 403
-mean(Group1.ab$Intake.SVL) #16.97
-mean(Group1.ab$fulton, na.rm=T) #2.943
-sd(Group1.ab$fulton, na.rm=T) #0.346
-
-#group 2, n = 1081
-mean(Group2.ab$Intake.SVL)#24.798
-mean(Group2.ab$fulton, na.rm=T) #3.087
-sd(Group2.ab$fulton, na.rm=T) # 0.3162
-
-#group 3, n = 150
-mean(Group3.ab$Intake.SVL) #33.43
-mean(Group3.ab$fulton, na.rm=T) #3.215
-sd(Group3.ab$fulton, na.rm=T) #0.285
-
-#only large adults and early adults
-tegu.data.adults<-subset(tegu.data.ab, tegu.data.ab$Intake.SVL> 26.7)
-merianae.adults<-subset(merianae2, merianae2$SVL>26.7)
-
-wilcox.test(tegu.data.adults$Intake.SVL, merianae.adults$SVL)
-
-mean(tegu.data.adults$percfat, na.rm=T)
-sd(tegu.data.adults$percfat, na.rm=T)
-merianae.adults$percfat<- (merianae.adults$FatBody/merianae.adults$mass.g)*100
-mean(merianae.adults$percfat, na.rm=T)
-sd(merianae.adults$percfat, na.rm=T)
-
-mean(tegu.data.adults$mass.g)
-sd(tegu.data.adults$mass.g)
-
-mean(merianae.adults$mass.g)
-sd(merianae.adults$mass.g)
-
-#check slope
-merianae$lsvl<-log(merianae$SVL)
-merianae$ltl<-log(merianae$TL)
-merianae$lmass<-log(merianae$mass.g)
-
-summary(lm(lmass~lsvl, data=tegu.data.adults))
-#check slope
-summary(lm(lmass~lsvl, data=merianae.adults)) #yes
-summary(lm(lmass~lsvl, data=Group2.N2)) #no
-summary(lm(lmass~lsvl, data=Group3.N2)) #no
-summary(lm(lmass~lsvl, data=Group1.N2)) #no
-summary(lm(lmass~lsvl, data=Group5)) #no
-
-##Invasive 1
-summary(Group1.ab$Intake.SVL)
-summary(Group1.ab$mass.g)
-summary(Group1.ab$fulton)
-summary(Group1.ab$percfat)
-summary(Group1.ab$fat.g)
-
-##Invasive 2
-summary(Group2.ab$Intake.SVL)
-summary(Group2.ab$mass.g)
-summary(Group2.ab$fulton)
-summary(Group2.ab$percfat)
-summary(Group2.ab$fat.g)
-summary(Group2.ab$Analysis.Sex)
-
-##Invasive 3
-summary(Group3.ab$Intake.SVL)
-summary(Group3.ab$mass.g)
-summary(Group3.ab$fulton)
-summary(Group3.ab$percfat)
-summary(Group3.ab$fat.g)
-
-#slope
-summary(lm(lmass~lsvl, data=Group2.ab)) #no
-summary(lm(lmass~lsvl, data=Group3.ab)) #no
-summary(lm(lmass~lsvl, data=Group1.ab))
-
-
 ####
 #### 5. Averages ####
 # males and females
@@ -923,6 +1082,7 @@ summary(tegu.data.ab$mass.g)
 summary(tegu.data.ab$fulton)
 summary(tegu.data.ab$percfat)
 summary(tegu.data.ab$fat.g)
+
 
 mean(Group3.ab$fulton) #3.16
 summary(adults$fulton) #2.26-3.93
@@ -1052,6 +1212,215 @@ mean(Group3.ab$Intake.SVL, na.rm=T) #3.084418
 ####
 
 
+#### Native vs. invasive range ####
+Native<-read.csv("C:/Users/jcole1/Downloads/R_Project_Tegu/R_Project_Tegu/NativeTeguData.csv")
+merianae<-subset(Native, Native$Species %in% "merianae")
+
+merianae$mass.g <- with(merianae, BM*1000)##body mass in grams
+merianae$fulton <- with(merianae, (mass.g/SVL^3)*10^2)
+merianae$percfat<-with(merianae, (FatBody/mass.g)*100)
+merianae$lsvl<-log(merianae$SVL)
+merianae$ltl<-log(merianae$TL)
+merianae$lmass<-log(merianae$mass.g)
+
+merianae$Date.1 <- as.Date(merianae$Date, "%m/%d/%Y")
+
+#add column for month and year
+merianae<-merianae %>%
+  dplyr::mutate(year = lubridate::year(merianae$Date.1), 
+                month.numb = lubridate::month(merianae$Date.1), 
+                day = lubridate::yday(merianae$Date.1))
+
+#convert month.num to name
+merianae$month<-month.abb[merianae$month.numb]
+merianae$month<-factor(merianae$month, levels=month.abb)
+
+#split into groups
+merianae$sizeclass <- factor(ifelse(merianae$SVL <=20.2, "Group1", 
+                                    ifelse(merianae$SVL>=30.0, "Group3","Group2")))
+
+#create group
+Group1.N<-subset(merianae, merianae$sizeclass=="Group1")
+Group2.N<-subset(merianae, merianae$sizeclass== "Group2")
+Group3.N<-subset(merianae, merianae$sizeclass== "Group3")
+
+#male and female
+males.N3<-subset (Group3.N2, Group3.N2$Sex=="male")
+females.N3<-subset (Group3.N2, Group3.N2$Sex=="female")
+
+#with outliers
+#mean fulton and SD per group
+mean(merianae$fulton, na.rm=T) #3.189
+sd(merianae$fulton, na.rm = T)#0.583
+
+#group 1, n = 3
+mean(Group1.N$fulton, na.rm=T) #4.908
+sd(Group1.N$fulton, na.rm=T) #3.829
+
+#group 2, n = 22
+mean(Group2.N$fulton, na.rm=T) #3.382
+sd(Group2.N$fulton, na.rm=T) #1.654
+
+#group 3, n = 670
+mean(Group3.N$fulton, na.rm=T) #3.175
+sd(Group3.N$fulton, na.rm=T) #0.462
+
+#remove outliers
+#IQR for outliers in fulton
+iqr<-IQR(merianae$fulton, na.rm=T)
+
+lowerq=quantile(merianae$fulton, na.rm=T)[2]
+upperq=quantile(merianae$fulton, na.rm=T)[4]
+
+mild.threshold.upper = (iqr * 1.5) + upperq
+mild.threshold.lower = lowerq - (iqr * 1.5)
+mild.threshold.lower #1.931
+mild.threshold.upper #4.4347
+
+#remove outliers
+merianae2<-merianae[which(merianae$fulton<4.434758 & merianae$fulton>1.931379),]
+
+#create groups 2
+Group1.N2<-subset(merianae2, merianae2$sizeclass=="Group1")
+Group2.N2<-subset(merianae2, merianae2$sizeclass== "Group2")
+Group3.N2<-subset(merianae2, merianae2$sizeclass== "Group3")
+
+#check amle and female
+Group1.male<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Male")
+Group2.male<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Male")
+Group3.male<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Male")
+
+Group1.female<-subset(Group1.ab, Group1.ab$Analysis.Sex=="Female")
+Group2.female<-subset(Group2.ab, Group2.ab$Analysis.Sex== "Female")
+Group3.female<-subset(Group3.ab, Group3.ab$Analysis.Sex== "Female")
+
+#check groups
+#all, n =673
+mean(merianae2$SVL,na.rm=T) #38.21
+mean(merianae2$fulton, na.rm=T) #3.168
+mean(tegu.data.ab$fulton, na.rm=T) #3.06
+sd(merianae2$fulton, na.rm = T)#0.418
+
+#group 1, n = 2
+mean(Group1.N2$SVL,na.rm=T) #19.5
+sd(Group1.N2$SVL, na.rm=T) #0.103
+mean(Group1.N2$fulton, na.rm=T) #2.697
+sd(Group1.N2$fulton, na.rm=T) #0.103
+mean(Group1.N2$mass.g, na.rm=T) #2.697
+sd(Group1.N2$mass.g, na.rm=T) #0.103
+mean(Group1.N2$FatBody, na.rm=T) #2.697
+sd(Group1.N2$FatBody, na.rm=T) #0.103
+summary(Group2.N2$percfat)
+sd(Group2.N2$percfat, na.rm=T)
+
+#group 2, n = 18
+mean(Group2.N2$SVL,na.rm=T) #28.027
+sd(Group2.N2$SVL, na.rm=T)
+mean(Group2.N2$fulton, na.rm=T) #2.94
+sd(Group2.N2$fulton, na.rm=T) #0.392
+mean(Group2.N2$mass.g, na.rm=T) #2.697
+sd(Group2.N2$mass.g, na.rm=T) #0.103
+mean(Group2.N2$FatBody, na.rm=T) #2.697
+sd(Group2.N2$FatBody, na.rm=T) #0.103
+
+#group 3, n = 653
+mean(Group3.N2$SVL,na.rm=T) #38.548
+sd(Group3.N2$SVL, na.rm=T)
+mean(Group3.N2$fulton, na.rm=T) #3.17
+sd(Group3.N2$fulton, na.rm=T) #0.417
+mean(Group3.N2$mass.g, na.rm=T) #2.697
+sd(Group3.N2$mass.g, na.rm=T) #0.103
+mean(Group3.N2$FatBody, na.rm=T) #2.697
+sd(Group3.N2$FatBody, na.rm=T) #0.103
+
+summary(Group3.N2$FatBody)
+summary(Group3.N2$fulton)
+
+summary(Group2.N2$FatBody)
+summary(Group2.N2$fulton)
+
+#Invasive
+
+#average Fulton's K, n = 1634
+mean(tegu.data.ab$Intake.SVL) #23.662
+mean(tegu.data.ab$fulton) #3.06
+sd(tegu.data.ab$fulton) #0.33
+
+#group 1, n = 403
+mean(Group1.ab$Intake.SVL) #16.97
+mean(Group1.ab$fulton, na.rm=T) #2.943
+sd(Group1.ab$fulton, na.rm=T) #0.346
+
+#group 2, n = 1081
+mean(Group2.ab$Intake.SVL)#24.798
+mean(Group2.ab$fulton, na.rm=T) #3.087
+sd(Group2.ab$fulton, na.rm=T) # 0.3162
+
+#group 3, n = 150
+mean(Group3.ab$Intake.SVL) #33.43
+mean(Group3.ab$fulton, na.rm=T) #3.215
+sd(Group3.ab$fulton, na.rm=T) #0.285
+
+#only large adults and early adults
+tegu.data.adults<-subset(tegu.data.ab, tegu.data.ab$Intake.SVL> 26.7)
+merianae.adults<-subset(merianae2, merianae2$SVL>26.7)
+
+wilcox.test(tegu.data.adults$Intake.SVL, merianae.adults$SVL)
+
+mean(tegu.data.adults$percfat, na.rm=T)
+sd(tegu.data.adults$percfat, na.rm=T)
+merianae.adults$percfat<- (merianae.adults$FatBody/merianae.adults$mass.g)*100
+mean(merianae.adults$percfat, na.rm=T)
+sd(merianae.adults$percfat, na.rm=T)
+
+mean(tegu.data.adults$mass.g)
+sd(tegu.data.adults$mass.g)
+
+mean(merianae.adults$mass.g)
+sd(merianae.adults$mass.g)
+
+#check slope
+merianae$lsvl<-log(merianae$SVL)
+merianae$ltl<-log(merianae$TL)
+merianae$lmass<-log(merianae$mass.g)
+
+summary(lm(lmass~lsvl, data=tegu.data.adults))
+#check slope
+summary(lm(lmass~lsvl, data=merianae.adults)) #yes
+summary(lm(lmass~lsvl, data=Group2.N2)) #no
+summary(lm(lmass~lsvl, data=Group3.N2)) #no
+summary(lm(lmass~lsvl, data=Group1.N2)) #no
+summary(lm(lmass~lsvl, data=Group5)) #no
+
+##Invasive 1
+summary(Group1.ab$Intake.SVL)
+summary(Group1.ab$mass.g)
+summary(Group1.ab$fulton)
+summary(Group1.ab$percfat)
+summary(Group1.ab$fat.g)
+
+##Invasive 2
+summary(Group2.ab$Intake.SVL)
+summary(Group2.ab$mass.g)
+summary(Group2.ab$fulton)
+summary(Group2.ab$percfat)
+summary(Group2.ab$fat.g)
+summary(Group2.ab$Analysis.Sex)
+
+##Invasive 3
+summary(Group3.ab$Intake.SVL)
+summary(Group3.ab$mass.g)
+summary(Group3.ab$fulton)
+summary(Group3.ab$percfat)
+summary(Group3.ab$fat.g)
+
+#slope
+summary(lm(lmass~lsvl, data=Group2.ab)) #no
+summary(lm(lmass~lsvl, data=Group3.ab)) #no
+summary(lm(lmass~lsvl, data=Group1.ab))
+
+
+####
 #### 6.Plotting Group 1####
 #### fulton by month####
 se <- function(x)
