@@ -3,7 +3,7 @@
 ##############   Body condition analysis                 ##############X
 ##############   Created by: Jenna Cole                  ##############X
 ##############   Modified by Sergio A. Balaguera-Reina   ##############X
-##############   Last day modified: Sep 9th, 2024        ##############X
+##############   Last day modified: Sep 12th, 2024        #############X
 #######################################################################X
 
 rm(list = ls())
@@ -460,7 +460,7 @@ b <- ggplot(tegu.data1, aes(y = fulton, x = as.factor(month), color = sizeclass)
 
 a / b + plot_layout(guides = 'collect') & theme(legend.position = 'bottom')
 
-ggsave("./Figures/Figure2.jpeg", plot = last_plot(), height = 1500, width = 2000, dpi = 200, units = 'px')
+ggsave("./Figures/Figure3.jpeg", plot = last_plot(), height = 1500, width = 2000, dpi = 250, units = 'px')
 
 a <- subset(tegu.data,month %in% "Feb")
 b <- subset(merianae2,month %in% "Feb")
@@ -565,9 +565,14 @@ anova(m1, m2, test = 'F')
 
 #Graph m2
 draw(m2, select = c("s(Max.Temp.C)",
-                    "s(percfat)",
-                    "s(Min.Temp.C,year)",
-                    "s(Max.Temp.C,year)",
-                    "ti(Rain.cm,percfat)",
+                    "s(percfat)"), scale = 'free')
+ggsave("./Figures/unvariate.jpeg", plot = last_plot(), height = 1000, width = 2000, dpi = 250,
+       units = 'px')
+draw(m2, select = c("s(Min.Temp.C,year)",
+                    "s(Max.Temp.C,year)"), scale = 'free')
+ggsave("./Figures/bivariate11.jpeg", plot = last_plot(), height = 1000, width = 2000, dpi = 250,
+       units = 'px')
+draw(m2, select = c("ti(Rain.cm,percfat)",
                     "ti(Min.Temp.C,percfat)"), scale = 'free')
-
+ggsave("./Figures/bivariate2.jpeg", plot = last_plot(), height = 1000, width = 2000, dpi = 250,
+       units = 'px')
